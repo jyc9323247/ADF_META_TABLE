@@ -8,7 +8,7 @@ v3 대비 변경: ① 수집대상마스터에서 `incr_method` 제거(파생값
 ---
 
 
-<img width="1304" height="735" alt="image" src="https://github.com/user-attachments/assets/cce779e5-b49a-46cc-821e-1237f552ffec" />
+<img width="1318" height="746" alt="image" src="https://github.com/user-attachments/assets/a546edf5-919a-4fc1-8e62-25e0e00b1000" />
 
 
 ## 1. 테이블 구성 (4개 + 선택 1개)
