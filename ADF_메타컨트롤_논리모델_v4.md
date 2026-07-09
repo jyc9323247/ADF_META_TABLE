@@ -7,6 +7,10 @@ v3 대비 변경: ① 수집대상마스터에서 `incr_method` 제거(파생값
 
 ---
 
+
+<img width="1304" height="735" alt="image" src="https://github.com/user-attachments/assets/cce779e5-b49a-46cc-821e-1237f552ffec" />
+
+
 ## 1. 테이블 구성 (4개 + 선택 1개)
 
 | 테이블 | 역할 | 입력 주체 |
@@ -22,6 +26,9 @@ ctl_ingest_target_master (1) ──< ctl_ingest_run_log (N)      [target_id]
 ctl_master_run_status    (1) ──< ctl_ingest_run_log (N)      [master_run_id]
 ctl_ingest_run_log       (1) ──< ctl_dbx_ingest_history (N)  [master_run_id+pipeline_run_id]
 ```
+<img width="908" height="764" alt="image" src="https://github.com/user-attachments/assets/3e5e8d3d-16fc-46c9-82c4-38435f990d28" />
+
+
 
 ### 수집 타입 의미 (확정)
 
