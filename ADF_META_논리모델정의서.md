@@ -62,6 +62,9 @@
 | D09 | 여부플래그 | is_active / pending_yn / skip_yn | Y | 활성 / 초기수집 대기 / skip 적용 | CHECK |
 | | | | N | 비활성 / 초기수집 완료 / skip 해제 | |
 
+
+
+> ix_target_route(data_class·ingest_type·condition_type·frequency·interval)는 오케스트레이터별 수집대상 Lookup을 위한 라우팅 키다. 파이프라인명↔조건 매핑과 lookup 쿼리는 [파이프라인 설계서] 참조.
 ---
 
 ## 4. 속성 정의서
