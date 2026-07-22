@@ -80,9 +80,9 @@
 | 소스테이블명 | src_table_nm | varchar(100) |  | Y | | 소스 테이블명 |
 | 파티션분할조건절 | partition_clause | varchar(100) | | Y | | 초기적재 분할 추출용 조건절 예) CLYM='202501' |
 | 데이터분류 | data_class | varchar(4) | | N | D01 | meta/raw |
-| 수집유형 | ingest_type | varchar(4) | | N | D02 | full/incr |
-| 실행그룹 | exec_group | varchar(20) | | Y | | 오케스트레이터 SEQ 예) pl_raw_orch_full_01 |
-| 증분조건유형 | condition_type | varchar(12) | | Y | D03 | incr 전용 |
+| 수집유형 | ingest_type | varchar(4) | | N | D02 | full/incr  |
+| 실행그룹 | exec_group | varchar(20) | | Y | | 오케스트레이터 SEQ 예) 01 {파이프라인명}_01 |
+| 증분조건유형 | condition_type | varchar(12) | | Y | D03 | incr 전용 window,bizday,close |
 | 수집주기 | condition_frequency | varchar(10) | | Y | D04 | window 전용 |
 | 수집주기간격 | condition_interval | int4 | | Y | | window 주기 단위 N(라우팅용) |
 | 증분기준컬럼명 | incr_column_nm | varchar(30) | | Y | | 워터마크 컬럼: IPDTM/CLYM 등 |
