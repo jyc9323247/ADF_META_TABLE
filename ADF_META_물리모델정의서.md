@@ -28,7 +28,7 @@
 |---|---|---|:--:|:--:|:--:|---|---|
 | target_id | 수집대상ID | bigserial | ● | ● | | | 수집 대상 PK (애플리케이션 채번) |
 | src_type | 소스커넥션타입 | varchar(10) | ● | | | | db2/mssql/oracle/mysql/postgres/rest/sftp |
-| src_db_nm | 소스DB명 | varchar(20) | | | | | MLMTP/MLCRP 등 |
+| src_db_nm | 소스DB명 | varchar(20) | | | | | DBNAME |
 | src_schema_nm | 소스스키마명 | varchar(30) | | | | | |
 | src_table_nm | 소스테이블명 | varchar(100) | | | | | |
 | partition_clause | 파티션분할조건절 | varchar(100) | | | | | 초기적재 분할 추출용 |
