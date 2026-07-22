@@ -78,8 +78,7 @@
 | 소스DB명 | src_db_nm | varchar(20) |  | Y | | DATABASE: MYDBP/MYDBT 등 |
 | 소스스키마명 | src_schema_nm | varchar(30) |  | Y | | 소스 스키마명 |
 | 소스테이블명 | src_table_nm | varchar(100) |  | Y | | 소스 테이블명 |
-| 파티션분할조건절 | partition_clause | varchar(100) | | Y | | 초기적재 분할 추출용 조건절 |
-| 랜딩경로템플릿 | landing_path_tpl | varchar(100) | | Y | | 랜딩존 경로 템플릿 |
+| 파티션분할조건절 | partition_clause | varchar(100) | | Y | | 초기적재 분할 추출용 조건절 예) CLYM='202501' |
 | 데이터분류 | data_class | varchar(4) | | N | D01 | meta/raw |
 | 수집유형 | ingest_type | varchar(4) | | N | D02 | full/incr |
 | 실행그룹 | exec_group | varchar(20) | | Y | | 오케스트레이터 SEQ/그룹(초기적재 용량분산 01,02 등) |
