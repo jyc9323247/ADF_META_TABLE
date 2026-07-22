@@ -75,7 +75,7 @@
 |---|---|---|---|---|---|---|
 | 수집대상ID | target_id | int8 | PK | N | | 수집 대상 대리키 |
 | 소스커넥션타입 | src_type | varchar(10) | | N | | CONN_TYPE: db2/mssql/oracle/mysql/postgres/rest/sftp |
-| 소스DB명 | src_db_nm | varchar(20) |  | Y | | DATABASE: MLMTP/MLCRP 등 |
+| 소스DB명 | src_db_nm | varchar(20) |  | Y | | DATABASE: MYDBP/MYDBT 등 |
 | 소스스키마명 | src_schema_nm | varchar(30) |  | Y | | 소스 스키마명 |
 | 소스테이블명 | src_table_nm | varchar(100) |  | Y | | 소스 테이블명 |
 | 파티션분할조건절 | partition_clause | varchar(100) | | Y | | 초기적재 분할 추출용 조건절 |
