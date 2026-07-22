@@ -150,7 +150,7 @@
 | extract_cnt | 추출건수 | int8 | | | | | |
 | save_cnt | 저장건수 | int8 | | | | | |
 | attempt_no | 재시도회차 | int4 | ● | | | 0 | |
-| status | 수행상태 | varchar(15) | | | | | PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED |
+| status | 수행상태 | varchar(15) | ● | | | | PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED |
 | error_log | 오류로그 | text | | | | | |
 | created_by | 생성자 | varchar(100) | | | | | |
 | created_dt | 생성일시 | timestamptz | ● | | | now() | |
