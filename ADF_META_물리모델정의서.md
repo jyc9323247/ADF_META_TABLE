@@ -67,7 +67,7 @@
 | master_run_id | 마스터수행ID | varchar(100) | ● | ● | | | @pipeline().RunId |
 | master_pipeline_nm | 마스터파이프라인명 | varchar(200) | ● | | | | @pipeline().Pipeline |
 | trigger_nm | 트리거명 | varchar(200) | | | | | @pipeline().TriggerName |
-| ingest_type | 수집유형 | varchar(4) | | | | | full/incr |
+| ingest_type | 수집유형 | varchar(4) | ● | | | | full/incr |
 | start_dt | 시작일시 | timestamptz | ● | | | | |
 | end_dt | 종료일시 | timestamptz | | | | | |
 | child_total_cnt | 차일드전체건수 | int4 | | | | 0 | |
@@ -128,9 +128,9 @@
 | ingest_pipeline_run_id | 수집파이프라인RunID | varchar(100) | ● | | | '-' | ADF 차일드 실제 RunId |
 | target_id | 수집대상ID | int8 | ● | | ● | | → ctl_ingest_target_master |
 | src_type | 소스커넥션타입 | varchar(10) | ● | | | | [스냅샷] |
-| src_db_nm | 소스DB명 | varchar(20) | | | | | [스냅샷] |
-| src_schema_nm | 소스스키마명 | varchar(30) | | | | | [스냅샷] |
-| src_table_nm | 소스테이블명 | varchar(100) | | | | | [스냅샷] |
+| src_db_nm | 소스DB명 | varchar(20) | ● | | | | [스냅샷] |
+| src_schema_nm | 소스스키마명 | varchar(30) | ● | | | | [스냅샷] |
+| src_table_nm | 소스테이블명 | varchar(100) | ● | | | | [스냅샷] |
 | data_class | 데이터분류 | varchar(4) | ● | | | | [스냅샷] |
 | ingest_type | 수집유형 | varchar(4) | ● | | | | [스냅샷] |
 | exec_group | 실행그룹 | varchar(20) | | | | | [스냅샷] |
