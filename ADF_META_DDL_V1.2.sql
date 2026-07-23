@@ -1,5 +1,5 @@
 
-CREATE SCHEMA IF NOT EXISTS "META_ADF";
+--CREATE SCHEMA IF NOT EXISTS "META_ADF";
 
 SET search_path TO "META_ADF", public;
 
@@ -96,7 +96,7 @@ CREATE TABLE ctl_master_pipeline_run (
     trigger_nm          varchar(200)   NOT NULL,
     ingest_type         varchar(4)     NOT NULL,
     start_dt            timestamptz    NOT NULL,
-    end_dt              timestamptz    NOT NULL DEFAULT '9999/12/31':timestamp,
+    end_dt              timestamptz    NOT NULL DEFAULT '9999/12/31'::timestamp,
     child_total_cnt     int4           NULL DEFAULT 0,
     child_succ_cnt      int4           NULL DEFAULT 0,
     child_fail_cnt      int4           NULL DEFAULT 0,
@@ -215,7 +215,7 @@ CREATE TABLE ctl_dbx_ingest_history (
 -- 5) ctl_run_skip : 트리거 skip 예외 목록(opt-in)
 -- ---------------------------------------------------------------------
 CREATE TABLE ctl_run_skip (
-	trigger_id          varchar(100)   NOT NULL
+	trigger_id          varchar(100)   NOT null,
     trigger_nm          varchar(200)   NOT NULL,
     skip_yn             bpchar(1)      NOT NULL DEFAULT 'n',
     skip_from_dt        timestamptz    NULL,
