@@ -153,6 +153,7 @@ CREATE TABLE ctl_ingest_pipeline_run (
     extract_query       text           NOT NULL,
     landing_path        varchar(500)   NOT NULL,
     file_name           varchar(100)   NOT NULL DEFAULT '-',
+	file_size_mb	    int8           NULL DEFAULT 0,
     start_dt            timestamptz    NULL,
     end_dt              timestamptz    NULL,
     extract_cnt         int8           NOT NULL DEFAULT 0,
@@ -302,7 +303,8 @@ COMMENT ON COLUMN ctl_ingest_pipeline_run.is_active              IS '[스냅샷]
 COMMENT ON COLUMN ctl_ingest_pipeline_run.pending_yn             IS '[스냅샷] 초기수집 대기 여부';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.extract_query          IS '실제 실행된 추출 쿼리';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.landing_path           IS '실제 랜딩 경로';
-COMMENT ON COLUMN ctl_ingest_pipeline_run.file_name              IS '산출 파일명';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.file_name              IS '수집한 파일명';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.file_size_mb           IS '수집한 파일 사이즈(MB)';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.start_dt               IS '수행 시작 일시';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.end_dt                 IS '수행 종료 일시';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.extract_cnt            IS '추출 건수';
