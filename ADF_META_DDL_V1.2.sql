@@ -187,7 +187,7 @@ CREATE TABLE "META_ADF".ctl_ingest_pipeline_run (
         FOREIGN KEY (target_id) REFERENCES "META_ADF".ctl_ingest_target_master(target_id),
     CONSTRAINT ck_ipr_yn CHECK (is_active IN ('y','n') AND pending_yn IN ('y','n')),
 	CONSTRAINT ctl_ingest_run_status_check
-        CHECK (status IN ('PENDING','RUNNING','SUCCEEDED','FAILED','SKIPPED'))
+        CHECK (status IN ('pending','running','succeeded','failed','skipped'))
 );
 
 CREATE INDEX ix_ipr_created ON "META_ADF".ctl_ingest_pipeline_run USING btree (created_dt);
