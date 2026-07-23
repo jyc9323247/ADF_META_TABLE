@@ -9,7 +9,6 @@ CREATE TABLE "META_ADF".ctl_ingest_target_master (
     src_schema_nm        varchar(30)    NULL,
     src_table_nm         varchar(100)   NULL,
     partition_clause     varchar(100)   NULL,
-    landing_path_tpl     varchar(100)   NULL,
     data_class           varchar(4)     NOT NULL,
     ingest_type          varchar(4)     NOT NULL,         
     exec_group           varchar(20)    NULL,
@@ -237,7 +236,6 @@ COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.src_db_nm           IS '�
 COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.src_schema_nm       IS '소스 스키마명';
 COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.src_table_nm        IS '소스 테이블명';
 COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.partition_clause    IS '초기적재 분할 추출용 조건절(대용량 파티션 분할)';
-COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.landing_path_tpl    IS '랜딩존 경로 템플릿';
 COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.data_class          IS '데이터 분류: meta/raw (파이프라인 DATA_CLASS 라우팅)';
 COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.ingest_type         IS '수집 유형: full(초기/주기전체)/incr(증분)';
 COMMENT ON COLUMN "META_ADF".ctl_ingest_target_master.exec_group          IS '오케스트레이터 실행 그룹/SEQ: 초기적재 용량분산(01,02) 등';
