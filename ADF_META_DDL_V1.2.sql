@@ -215,18 +215,18 @@ CREATE TABLE ctl_dbx_ingest_history (
 -- 5) ctl_run_skip : 트리거 skip 예외 목록(opt-in)
 -- ---------------------------------------------------------------------
 CREATE TABLE ctl_run_skip (
+	trigger_id          varchar(100)   NOT NULL
     trigger_nm          varchar(200)   NOT NULL,
-    master_pipeline_nm  varchar(200)   NOT NULL,
-    skip_yn             bpchar(1)      NOT NULL DEFAULT 'y',
+    skip_yn             bpchar(1)      NOT NULL DEFAULT 'n',
     skip_from_dt        timestamptz    NULL,
     skip_to_dt          timestamptz    NULL,
     skip_reason         varchar(500)   NULL,
-	created_by          varchar(100)   NULL,
+	created_by          varchar(100)   NOT NULL,
     created_dt          timestamptz    NOT NULL DEFAULT now(),
     update_by           varchar(100)   NULL,                 
     update_dt           timestamptz    NULL,
 
-    CONSTRAINT ctl_run_skip_pkey PRIMARY KEY (trigger_nm, master_pipeline_nm),
+    CONSTRAINT ctl_run_skip_pkey PRIMARY KEY (trigger_id),
     CONSTRAINT ctl_run_skip_check  CHECK (skip_from_dt IS NULL OR skip_to_dt IS NULL OR skip_from_dt <= skip_to_dt),
     CONSTRAINT ctl_run_skip_check1 CHECK ((skip_from_dt IS NULL) = (skip_to_dt IS NULL)),
     CONSTRAINT ck_skip_yn CHECK (lower(skip_yn::text) IN ('y','n'))
@@ -332,8 +332,8 @@ COMMENT ON COLUMN ctl_dbx_ingest_history.update_dt              IS '수정 일�
 
 
 COMMENT ON TABLE  ctl_run_skip IS '트리거 skip 예외 목록(opt-in). 행 없음=RUN, skip_yn=Y=SKIP';
-COMMENT ON COLUMN ctl_run_skip.trigger_nm         IS '트리거명 (PK)';
-COMMENT ON COLUMN ctl_run_skip.master_pipeline_nm IS '마스터 파이프라인명 (PK)';
+COMMENT ON COLUMN ctl_run_skip.trigger_id         IS '트리ID (PK)';
+COMMENT ON COLUMN ctl_run_skip.trigger_nm         IS '트리거명';
 COMMENT ON COLUMN ctl_run_skip.skip_yn            IS 'skip 여부 Y/N';
 COMMENT ON COLUMN ctl_run_skip.skip_from_dt       IS 'skip 시작 일시(WINDOW). NULL이면 무기한(FLAG)';
 COMMENT ON COLUMN ctl_run_skip.skip_to_dt         IS 'skip 종료 일시(WINDOW). from/to는 동시 NULL 또는 동시 값';
