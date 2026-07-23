@@ -125,29 +125,7 @@ CREATE UNIQUE INDEX ux_mrs_running ON ctl_master_pipeline_run
 
 
 -- ---------------------------------------------------------------------
--- 3) ctl_run_skip : 트리거 skip 예외 목록(opt-in)
--- ---------------------------------------------------------------------
-CREATE TABLE ctl_run_skip (
-    trigger_nm          varchar(200)   NOT NULL,
-    master_pipeline_nm  varchar(200)   NOT NULL,
-    skip_yn             bpchar(1)      NOT NULL DEFAULT 'y',
-    skip_from_dt        timestamptz    NULL,
-    skip_to_dt          timestamptz    NULL,
-    skip_reason         varchar(500)   NULL,
-	created_by          varchar(100)   NULL,
-    created_dt          timestamptz    NOT NULL DEFAULT now(),
-    update_by           varchar(100)   NULL,                 
-    update_dt           timestamptz    NULL,
-
-    CONSTRAINT ctl_run_skip_pkey PRIMARY KEY (trigger_nm, master_pipeline_nm),
-    CONSTRAINT ctl_run_skip_check  CHECK (skip_from_dt IS NULL OR skip_to_dt IS NULL OR skip_from_dt <= skip_to_dt),
-    CONSTRAINT ctl_run_skip_check1 CHECK ((skip_from_dt IS NULL) = (skip_to_dt IS NULL)),
-    CONSTRAINT ck_skip_yn CHECK (lower(skip_yn::text) IN ('y','n'))
-);
-
-
--- ---------------------------------------------------------------------
--- 4) ctl_ingest_pipeline_run : 차일드(수집) 수행 이력 팩트 (수행시점 스냅샷)
+-- 3) ctl_ingest_pipeline_run : 차일드(수집) 수행 이력 팩트 (수행시점 스냅샷)
 -- ---------------------------------------------------------------------
 CREATE TABLE ctl_ingest_pipeline_run (
     ingest_pipeline_id  varchar(100)   NOT NULL DEFAULT gen_random_uuid()::text,
@@ -202,7 +180,7 @@ CREATE INDEX ix_ipr_target  ON ctl_ingest_pipeline_run USING btree (target_id);
 
 
 -- ---------------------------------------------------------------------
--- 5) ctl_dbx_ingest_history : Databricks 브론즈 적재 완료 이력
+-- 4) ctl_dbx_ingest_history : Databricks 브론즈 적재 완료 이력
 -- ---------------------------------------------------------------------
 CREATE TABLE ctl_dbx_ingest_history (
     master_run_id           varchar(100) NOT NULL,
@@ -229,3 +207,27 @@ CREATE TABLE ctl_dbx_ingest_history (
 	CONSTRAINT ctl_dbx_ingest_status_check
         CHECK (lower(status) IN ('pending','running','succeeded','failed','skipped'))
 );
+
+
+
+-- ---------------------------------------------------------------------
+-- 5) ctl_run_skip : 트리거 skip 예외 목록(opt-in)
+-- ---------------------------------------------------------------------
+CREATE TABLE ctl_run_skip (
+    trigger_nm          varchar(200)   NOT NULL,
+    master_pipeline_nm  varchar(200)   NOT NULL,
+    skip_yn             bpchar(1)      NOT NULL DEFAULT 'y',
+    skip_from_dt        timestamptz    NULL,
+    skip_to_dt          timestamptz    NULL,
+    skip_reason         varchar(500)   NULL,
+	created_by          varchar(100)   NULL,
+    created_dt          timestamptz    NOT NULL DEFAULT now(),
+    update_by           varchar(100)   NULL,                 
+    update_dt           timestamptz    NULL,
+
+    CONSTRAINT ctl_run_skip_pkey PRIMARY KEY (trigger_nm, master_pipeline_nm),
+    CONSTRAINT ctl_run_skip_check  CHECK (skip_from_dt IS NULL OR skip_to_dt IS NULL OR skip_from_dt <= skip_to_dt),
+    CONSTRAINT ctl_run_skip_check1 CHECK ((skip_from_dt IS NULL) = (skip_to_dt IS NULL)),
+    CONSTRAINT ck_skip_yn CHECK (lower(skip_yn::text) IN ('y','n'))
+);
+
