@@ -231,3 +231,112 @@ CREATE TABLE ctl_run_skip (
     CONSTRAINT ck_skip_yn CHECK (lower(skip_yn::text) IN ('y','n'))
 );
 
+
+-- =====================================================================
+-- [C] 테이블/컬럼 주석
+-- =====================================================================
+COMMENT ON TABLE  ctl_ingest_target_master IS '수집 대상 마스터 : 대상 정의 + 증분 HWM 상태. 개발자/운영자 관리 유일 수작업 테이블';
+COMMENT ON COLUMN ctl_ingest_target_master.target_id           IS '수집 대상 PK';
+COMMENT ON COLUMN ctl_ingest_target_master.src_type            IS '소스 커넥션 타입(CONN_TYPE): db2/mssql/oracle/mysql/postgres/rest/sftp';
+COMMENT ON COLUMN ctl_ingest_target_master.src_db_nm           IS '소스 데이터베이스명(DATABASE): MLMTP/MLCRP 등';
+COMMENT ON COLUMN ctl_ingest_target_master.src_schema_nm       IS '소스 스키마명';
+COMMENT ON COLUMN ctl_ingest_target_master.src_table_nm        IS '소스 테이블명';
+COMMENT ON COLUMN ctl_ingest_target_master.partition_clause    IS '초기적재 분할 추출용 조건절(대용량 파티션 분할)';
+COMMENT ON COLUMN ctl_ingest_target_master.data_class          IS '데이터 분류: meta/raw (파이프라인 DATA_CLASS 라우팅)';
+COMMENT ON COLUMN ctl_ingest_target_master.ingest_type         IS '수집 유형: full(초기/주기전체)/incr(증분)';
+COMMENT ON COLUMN ctl_ingest_target_master.exec_group          IS '오케스트레이터 실행 그룹/SEQ: 초기적재 용량분산(01,02) 등';
+COMMENT ON COLUMN ctl_ingest_target_master.condition_type      IS '증분 조건 유형: window/bizday/close (incr 전용)';
+COMMENT ON COLUMN ctl_ingest_target_master.condition_frequency IS 'window 스케줄 주기: minutely~yearly (라우팅 전용)';
+COMMENT ON COLUMN ctl_ingest_target_master.condition_interval  IS 'window 주기 단위 N (라우팅 전용). 증분 경계는 incr_column_hw_val이 담당';
+COMMENT ON COLUMN ctl_ingest_target_master.incr_column_nm      IS '증분 기준(워터마크) 컬럼: IPDTM/CLYM 등';
+COMMENT ON COLUMN ctl_ingest_target_master.incr_column_type    IS '워터마크 값 데이터타입: NUMERIC/DATE/TIMESTAMP/STRING (WHERE 인용 처리용). 기준컬럼 존재 시 필수';
+COMMENT ON COLUMN ctl_ingest_target_master.incr_column_hw_val  IS '현재 하이워터마크 값. 수집 성공 시에만 갱신';
+COMMENT ON COLUMN ctl_ingest_target_master.is_active           IS '활성 여부 Y/N';
+COMMENT ON COLUMN ctl_ingest_target_master.pending_yn          IS '초기수집 대기 여부: Y=대기, N=완료';
+COMMENT ON COLUMN ctl_ingest_target_master.created_by          IS '생성자';
+COMMENT ON COLUMN ctl_ingest_target_master.created_dt          IS '생성 일시';
+COMMENT ON COLUMN ctl_ingest_target_master.update_by           IS '수정자';
+COMMENT ON COLUMN ctl_ingest_target_master.update_dt           IS '수정 일시';
+
+COMMENT ON TABLE  ctl_master_pipeline_run IS '마스터 파이프라인 수행 상태. ux_mrs_running으로 동시수행 락 겸용';
+COMMENT ON COLUMN ctl_master_pipeline_run.master_run_id      IS '마스터 파이프라인 실행 ID (@pipeline().RunId)';
+COMMENT ON COLUMN ctl_master_pipeline_run.master_pipeline_nm IS '마스터 파이프라인명 (@pipeline().Pipeline)';
+COMMENT ON COLUMN ctl_master_pipeline_run.trigger_nm         IS '트리거명 (@pipeline().TriggerName)';
+COMMENT ON COLUMN ctl_master_pipeline_run.ingest_type        IS '수집 유형 full/incr';
+COMMENT ON COLUMN ctl_master_pipeline_run.start_dt           IS '수행 시작 일시';
+COMMENT ON COLUMN ctl_master_pipeline_run.end_dt             IS '수행 종료 일시';
+COMMENT ON COLUMN ctl_master_pipeline_run.child_total_cnt    IS '차일드 전체 건수';
+COMMENT ON COLUMN ctl_master_pipeline_run.child_succ_cnt     IS '차일드 성공 건수';
+COMMENT ON COLUMN ctl_master_pipeline_run.child_fail_cnt     IS '차일드 실패 건수';
+COMMENT ON COLUMN ctl_master_pipeline_run.status             IS '상태: PENDING/RUNNING/SUCCEEDED/FAILED/SKIPPED';
+COMMENT ON COLUMN ctl_master_pipeline_run.skip_type          IS 'skip 유형: WINDOW/FLAG/LOCKED';
+COMMENT ON COLUMN ctl_master_pipeline_run.run_mode           IS '실행 모드: SCHEDULE/MANUAL';
+COMMENT ON COLUMN ctl_master_pipeline_run.created_by         IS '생성자';
+COMMENT ON COLUMN ctl_master_pipeline_run.created_dt         IS '생성 일시';
+COMMENT ON COLUMN ctl_master_pipeline_run.update_by          IS '수정자';
+COMMENT ON COLUMN ctl_master_pipeline_run.update_dt          IS '수정 일시';
+
+COMMENT ON TABLE  ctl_ingest_pipeline_run IS '차일드(수집) 파이프라인 수행 이력. 대상 마스터 값의 수행시점 스냅샷 보존';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.ingest_pipeline_id     IS '파이프라인 ID (PK)  UUID 자동생성';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.master_run_id          IS '마스터 실행 ID (FK → ctl_master_pipeline_run)';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.master_pipeline_nm     IS '마스터 파이프라인명';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.target_id              IS '수집 대상 ID (FK → ctl_ingest_target_master)';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.src_type               IS '[스냅샷] 소스 커넥션 타입';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.src_db_nm              IS '[스냅샷] 소스 DB명';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.src_schema_nm          IS '[스냅샷] 소스 스키마명';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.src_table_nm           IS '[스냅샷] 소스 테이블명';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.data_class             IS '[스냅샷] 데이터 분류 meta/raw';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.ingest_type            IS '[스냅샷] 수집 유형 full/incr';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.exec_group             IS '[스냅샷] 실행 그룹/SEQ';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.condition_type         IS '[스냅샷] 증분 조건 유형';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.condition_frequency    IS '[스냅샷] window 주기';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.condition_interval     IS '[스냅샷] window 주기 단위 N';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.incr_column_nm         IS '[스냅샷] 증분 기준 컬럼';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.incr_column_type       IS '[스냅샷] 워터마크 값 타입';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.incr_column_hw_val     IS '[스냅샷] 이번 수행에 사용된 HWM 값';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.is_active              IS '[스냅샷] 활성 여부';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.pending_yn             IS '[스냅샷] 초기수집 대기 여부';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.extract_query          IS '실제 실행된 추출 쿼리';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.landing_path           IS '실제 랜딩 경로';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.file_name              IS '산출 파일명';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.start_dt               IS '수행 시작 일시';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.end_dt                 IS '수행 종료 일시';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.extract_cnt            IS '추출 건수';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.save_cnt               IS '저장 건수';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.attempt_no             IS '재시도 회차';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.status                 IS '상태: RUNNING/SUCCEEDED/FAILED 등';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.error_log              IS '오류 로그';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.created_by             IS '생성자';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.created_dt             IS '생성 일시';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.update_by              IS '수정자';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.update_dt              IS '수정 일시';
+
+COMMENT ON TABLE  ctl_dbx_ingest_history IS 'Databricks 브론즈 적재 완료 이력';
+COMMENT ON COLUMN ctl_dbx_ingest_history.master_run_id          IS '마스터 실행 ID (PK, FK → ctl_master_pipeline_run)';
+COMMENT ON COLUMN ctl_dbx_ingest_history.ingest_pipeline_id     IS '파이프라인 ID (PK, FK → ctl_ingest_pipeline_run)';
+COMMENT ON COLUMN ctl_dbx_ingest_history.bronze_table_nm        IS '브론즈 테이블명';
+COMMENT ON COLUMN ctl_dbx_ingest_history.landing_path           IS '랜딩 경로';
+COMMENT ON COLUMN ctl_dbx_ingest_history.file_name              IS '적재 파일명';
+COMMENT ON COLUMN ctl_dbx_ingest_history.start_dt               IS '적재 시작 일시';
+COMMENT ON COLUMN ctl_dbx_ingest_history.end_dt                 IS '적재 종료 일시';
+COMMENT ON COLUMN ctl_dbx_ingest_history.extract_cnt            IS '추출 건수';
+COMMENT ON COLUMN ctl_dbx_ingest_history.save_cnt               IS '저장 건수';
+COMMENT ON COLUMN ctl_dbx_ingest_history.status                 IS '상태';
+COMMENT ON COLUMN ctl_dbx_ingest_history.error_log              IS '오류 로그';
+COMMENT ON COLUMN ctl_dbx_ingest_history.created_by             IS '생성자';
+COMMENT ON COLUMN ctl_dbx_ingest_history.created_dt             IS '생성 일시';
+COMMENT ON COLUMN ctl_dbx_ingest_history.update_by              IS '수정자';
+COMMENT ON COLUMN ctl_dbx_ingest_history.update_dt              IS '수정 일시';
+
+
+COMMENT ON TABLE  ctl_run_skip IS '트리거 skip 예외 목록(opt-in). 행 없음=RUN, skip_yn=Y=SKIP';
+COMMENT ON COLUMN ctl_run_skip.trigger_nm         IS '트리거명 (PK)';
+COMMENT ON COLUMN ctl_run_skip.master_pipeline_nm IS '마스터 파이프라인명 (PK)';
+COMMENT ON COLUMN ctl_run_skip.skip_yn            IS 'skip 여부 Y/N';
+COMMENT ON COLUMN ctl_run_skip.skip_from_dt       IS 'skip 시작 일시(WINDOW). NULL이면 무기한(FLAG)';
+COMMENT ON COLUMN ctl_run_skip.skip_to_dt         IS 'skip 종료 일시(WINDOW). from/to는 동시 NULL 또는 동시 값';
+COMMENT ON COLUMN ctl_run_skip.skip_reason        IS 'skip 사유';
+COMMENT ON COLUMN ctl_run_skip.created_by         IS '생성자';
+COMMENT ON COLUMN ctl_run_skip.created_dt         IS '생성 일시';
+COMMENT ON COLUMN ctl_run_skip.update_by          IS '수정자';
+COMMENT ON COLUMN ctl_run_skip.update_dt          IS '수정 일시';
