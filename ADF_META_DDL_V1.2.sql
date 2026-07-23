@@ -97,6 +97,7 @@ CREATE TABLE ctl_master_pipeline_run (
     ingest_type         varchar(4)     NOT NULL,
     start_dt            timestamptz    NOT NULL,
     end_dt              timestamptz    NOT NULL DEFAULT '9999/12/31'::timestamp,
+	exec_group          varchar(20)    NULL,
     child_total_cnt     int4           NULL DEFAULT 0,
     child_succ_cnt      int4           NULL DEFAULT 0,
     child_fail_cnt      int4           NULL DEFAULT 0,
@@ -267,6 +268,7 @@ COMMENT ON COLUMN ctl_master_pipeline_run.trigger_nm         IS '트리거명 (@
 COMMENT ON COLUMN ctl_master_pipeline_run.ingest_type        IS '수집 유형 full/incr';
 COMMENT ON COLUMN ctl_master_pipeline_run.start_dt           IS '수행 시작 일시';
 COMMENT ON COLUMN ctl_master_pipeline_run.end_dt             IS '수행 종료 일시';
+COMMENT ON COLUMN ctl_master_pipeline_run.exec_group         IS '오케스트레이터 실행 그룹/SEQ: 초기적재 용량분산(01,02) 등';
 COMMENT ON COLUMN ctl_master_pipeline_run.child_total_cnt    IS '차일드 전체 건수';
 COMMENT ON COLUMN ctl_master_pipeline_run.child_succ_cnt     IS '차일드 성공 건수';
 COMMENT ON COLUMN ctl_master_pipeline_run.child_fail_cnt     IS '차일드 실패 건수';
