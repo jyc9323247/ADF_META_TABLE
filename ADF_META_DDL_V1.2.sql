@@ -18,8 +18,8 @@ CREATE TABLE "META_ADF".ctl_ingest_target_master (
     incr_column_nm       varchar(30)    NULL,
     incr_column_type     varchar(10)    NULL,
     incr_column_hw_val   varchar(100)   NULL,
-    is_active            bpchar(1)      NOT NULL DEFAULT 'Y',
-    pending_yn           bpchar(1)      NOT NULL DEFAULT 'Y',
+    is_active            bpchar(1)      NOT NULL DEFAULT 'y',
+    pending_yn           bpchar(1)      NOT NULL DEFAULT 'y',
     created_by           varchar(100)   NULL,
     created_dt           timestamptz    NOT NULL DEFAULT now(),
     update_by            varchar(100)   NULL,
@@ -34,7 +34,7 @@ CREATE TABLE "META_ADF".ctl_ingest_target_master (
     CONSTRAINT ctl_ingest_target_master_condition_frequency_check
         CHECK (condition_frequency IN ('minutely','hourly','daily','weekly','monthly','yearly')),
     CONSTRAINT ck_incr_col_type
-        CHECK (incr_column_type IN ('NUMERIC','DATE','TIMESTAMP','STRING')),
+        CHECK (incr_column_type IN ('numeric','date','timestamp','string')),
 
     -- FULL: 조건/증분 컬럼 전부 NULL (부수: type/hw_val도 NULL 강제)
     CONSTRAINT ck_full_no_cond CHECK (
@@ -69,16 +69,16 @@ CREATE TABLE "META_ADF".ctl_ingest_target_master (
         incr_column_nm IS NULL OR incr_column_type IS NOT NULL
     ),
     -- Y/N 플래그 검증
-    CONSTRAINT ck_target_yn CHECK (is_active IN ('Y','N') AND pending_yn IN ('Y','N'))
+    CONSTRAINT ck_target_yn CHECK (is_active IN ('y','n') AND pending_yn IN ('y','n'))
 );
 
 CREATE INDEX ix_target_pending ON "META_ADF".ctl_ingest_target_master
     USING btree (data_class)
-    WHERE (is_active = 'Y' AND pending_yn = 'Y');
+    WHERE (is_active = 'y' AND pending_yn = 'y');
 
 CREATE INDEX ix_target_route ON "META_ADF".ctl_ingest_target_master
-    USING btree (data_class, ingest_type, condition_type, condition_frequency, condition_interval)  -- ① ingest_type
-    WHERE (is_active = 'Y');
+    USING btree (data_class, ingest_type, condition_type, condition_frequency, condition_interval)  
+    WHERE (is_active = 'y');
 
 
 -- ---------------------------------------------------------------------
@@ -104,10 +104,10 @@ CREATE TABLE "META_ADF".ctl_master_pipeline_run (
 
     CONSTRAINT ctl_master_run_status_pkey PRIMARY KEY (master_run_id),
     CONSTRAINT ctl_master_run_status_ingest_type_check CHECK (ingest_type IN ('full','incr')),
-    CONSTRAINT ctl_master_run_status_run_mode_check  CHECK (run_mode  IN ('SCHEDULE','MANUAL')),
-    CONSTRAINT ctl_master_run_status_skip_type_check CHECK (skip_type IN ('WINDOW','FLAG','LOCKED')),
+    CONSTRAINT ctl_master_run_status_run_mode_check  CHECK (run_mode  IN ('schedule','manual')),
+    CONSTRAINT ctl_master_run_status_skip_type_check CHECK (skip_type IN ('window','flag','locked')),
     CONSTRAINT ctl_master_run_status_status_check
-        CHECK (status IN ('PENDING','RUNNING','SUCCEEDED','FAILED','SKIPPED'))
+        CHECK (status IN ('pending','running','succeeded','failed','skipped'))
 );
 
 CREATE INDEX ix_mpr_status_start ON "META_ADF".ctl_master_pipeline_run
@@ -116,7 +116,7 @@ CREATE INDEX ix_mpr_status_start ON "META_ADF".ctl_master_pipeline_run
 -- 동시수행 방지: 동일 파이프라인+수집타입 RUNNING 1건 제한
 CREATE UNIQUE INDEX ux_mrs_running ON "META_ADF".ctl_master_pipeline_run
     USING btree (master_pipeline_nm, ingest_type)
-    WHERE ((status)::text = 'RUNNING');
+    WHERE ((status)::text = 'running');
 
 
 -- ---------------------------------------------------------------------
@@ -125,7 +125,7 @@ CREATE UNIQUE INDEX ux_mrs_running ON "META_ADF".ctl_master_pipeline_run
 CREATE TABLE "META_ADF".ctl_run_skip (
     trigger_nm          varchar(200)   NOT NULL,
     master_pipeline_nm  varchar(200)   NOT NULL,
-    skip_yn             bpchar(1)      NOT NULL DEFAULT 'Y',
+    skip_yn             bpchar(1)      NOT NULL DEFAULT 'y',
     skip_from_dt        timestamptz    NULL,
     skip_to_dt          timestamptz    NULL,
     skip_reason         varchar(500)   NULL,
@@ -137,7 +137,7 @@ CREATE TABLE "META_ADF".ctl_run_skip (
     CONSTRAINT ctl_run_skip_pkey PRIMARY KEY (trigger_nm, master_pipeline_nm),
     CONSTRAINT ctl_run_skip_check  CHECK (skip_from_dt IS NULL OR skip_to_dt IS NULL OR skip_from_dt <= skip_to_dt),
     CONSTRAINT ctl_run_skip_check1 CHECK ((skip_from_dt IS NULL) = (skip_to_dt IS NULL)),
-    CONSTRAINT ck_skip_yn CHECK (skip_yn IN ('Y','N'))
+    CONSTRAINT ck_skip_yn CHECK (skip_yn IN ('y','n'))
 );
 
 
@@ -163,8 +163,8 @@ CREATE TABLE "META_ADF".ctl_ingest_pipeline_run (
     incr_column_nm      varchar(30)    NULL,
     incr_column_type    varchar(10)    NULL,
     incr_column_hw_val  varchar(100)   NULL,
-    is_active           bpchar(1)      NOT NULL DEFAULT 'Y',
-    pending_yn          bpchar(1)      NOT NULL DEFAULT 'Y',
+    is_active           bpchar(1)      NOT NULL DEFAULT 'y',
+    pending_yn          bpchar(1)      NOT NULL DEFAULT 'n',
     extract_query       text           NOT NULL,
     landing_path        varchar(500)   NULL,
     file_name           varchar(100)   NULL,
@@ -180,12 +180,12 @@ CREATE TABLE "META_ADF".ctl_ingest_pipeline_run (
     update_by           varchar(100)   NULL,
     update_dt           timestamptz    NULL,
 
-    CONSTRAINT ctl_ingest_run_pkey PRIMARY KEY (ingest_pipeline_id),   -- ④ 단일 PK 유지
+    CONSTRAINT ctl_ingest_run_pkey PRIMARY KEY (ingest_pipeline_id),   
     CONSTRAINT ctl_ingest_pipeline_run_master_run_id_fkey
         FOREIGN KEY (master_run_id) REFERENCES "META_ADF".ctl_master_pipeline_run(master_run_id),
     CONSTRAINT ctl_ingest_pipeline_run_target_id_fkey
         FOREIGN KEY (target_id) REFERENCES "META_ADF".ctl_ingest_target_master(target_id),
-    CONSTRAINT ck_ipr_yn CHECK (is_active IN ('Y','N') AND pending_yn IN ('Y','N')),
+    CONSTRAINT ck_ipr_yn CHECK (is_active IN ('y','n') AND pending_yn IN ('y','n')),
 	CONSTRAINT ctl_ingest_run_status_check
         CHECK (status IN ('PENDING','RUNNING','SUCCEEDED','FAILED','SKIPPED'))
 );
@@ -222,7 +222,7 @@ CREATE TABLE "META_ADF".ctl_dbx_ingest_history (
     CONSTRAINT ctl_dbx_ingest_history_master_run_id_fkey
         FOREIGN KEY (master_run_id) REFERENCES "META_ADF".ctl_master_pipeline_run(master_run_id),
 	CONSTRAINT ctl_dbx_ingest_status_check
-        CHECK (status IN ('PENDING','RUNNING','SUCCEEDED','FAILED','SKIPPED'))
+        CHECK (status IN  ('pending','running','succeeded','failed','skipped'))
 );
 
 
