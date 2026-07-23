@@ -92,7 +92,7 @@ CREATE INDEX ix_target_route ON ctl_ingest_target_master
 CREATE TABLE ctl_master_pipeline_run (
     master_run_id       varchar(100)   NOT NULL,
     master_pipeline_nm  varchar(200)   NOT NULL,
-	trigger_nm          varchar(100)   NOT NULL,
+	trigger_id          varchar(100)   NOT NULL,
     trigger_nm          varchar(200)   NOT NULL,
     ingest_type         varchar(4)     NOT NULL,
     start_dt            timestamptz    NOT NULL,
@@ -262,6 +262,7 @@ COMMENT ON COLUMN ctl_ingest_target_master.update_dt           IS '수정 일시
 COMMENT ON TABLE  ctl_master_pipeline_run IS '마스터 파이프라인 수행 상태. ux_mrs_running으로 동시수행 락 겸용';
 COMMENT ON COLUMN ctl_master_pipeline_run.master_run_id      IS '마스터 파이프라인 실행 ID (@pipeline().RunId)';
 COMMENT ON COLUMN ctl_master_pipeline_run.master_pipeline_nm IS '마스터 파이프라인명 (@pipeline().Pipeline)';
+COMMENT ON COLUMN ctl_master_pipeline_run.trigger_id         IS '트리거명 (@pipeline().TriggerId)';
 COMMENT ON COLUMN ctl_master_pipeline_run.trigger_nm         IS '트리거명 (@pipeline().TriggerName)';
 COMMENT ON COLUMN ctl_master_pipeline_run.ingest_type        IS '수집 유형 full/incr';
 COMMENT ON COLUMN ctl_master_pipeline_run.start_dt           IS '수행 시작 일시';
