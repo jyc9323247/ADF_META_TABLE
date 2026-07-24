@@ -2,10 +2,17 @@
 
 - DBMS: Azure Database for PostgreSQL
 - 스키마: `META_ADF`
-- 기준 DDL: `ADF_META_DDL_V1.5.sql`
+- 기준 DDL: `ADF_META_DDL_V1.7.sql`
 - 표기: `NN` = NOT NULL(●), `PK`/`FK` = 키 여부(●). 데이터타입은 물리 타입·길이 그대로.
 - ※ 코드성 값은 반드시 **대문자**로 저장(META/RAW/FULL/INCR/WINDOW 등). CHECK/인덱스의 `lower()` 전면 제거
 - 구성: 테이블 목록 → 테이블별 명세(컬럼/제약/인덱스) → 인덱스·FK·CHECK 종합 → 특이사항
+
+### V1.6 대비 주요 변경(V1.7)
+- `ux_mrs_running` 락을 매뉴얼 실행 한정으로 변경: WHERE에 `trigger_nm='SAND BOX'` 추가 — 스케줄 실행은 마스터 락 미적용, 매뉴얼 FULL/INCR 중복 수행만 차단
+
+### V1.5 대비 주요 변경(V1.6)
+- `ux_ipr_running` 락 범위를 FULL로 한정: WHERE에 `ingest_type='FULL'` 추가 (INCR은 자식 레벨 락 미적용)
+- `ux_mrs_running` 키에 `trigger_nm` 추가: (master_pipeline_nm, ingest_type, trigger_nm) — 트리거가 다르면 동일 파이프라인+수집타입도 동시 수행 허용
 
 ### V1.4 대비 주요 변경(V1.5)
 - `ctl_ingest_pipeline_run`에 자식 레벨 동시수행 락 `ux_ipr_running`(UNIQUE 부분, (target_id, ingest_type) WHERE status='RUNNING') 추가 — 동일 대상+수집타입 RUNNING 1건 제한
@@ -103,7 +110,7 @@
 
 인덱스
 - `ix_mpr_status_start` : (status, start_dt) — 모니터링
-- `ux_mrs_running` : **UNIQUE** (master_pipeline_nm, ingest_type) WHERE status='RUNNING' — 동시수행 락
+- `ux_mrs_running` : **UNIQUE** (master_pipeline_nm, ingest_type, trigger_nm) WHERE status='RUNNING' AND trigger_nm='SAND BOX' — 동시수행 락(매뉴얼 실행 한정)
 
 ---
 
@@ -159,7 +166,7 @@
 - `ix_ipr_mri` : (master_run_id)
 - `ix_ipr_status` : (master_run_id, status)
 - `ix_ipr_target` : (target_id)
-- `ux_ipr_running` : **UNIQUE** (target_id, ingest_type) WHERE status='RUNNING' — 자식 동시수행 락(동일 대상+수집타입 RUNNING 1건)
+- `ux_ipr_running` : **UNIQUE** (target_id, ingest_type) WHERE status='RUNNING' AND ingest_type='FULL' — 자식 동시수행 락(FULL 한정. 동일 대상 FULL RUNNING 1건)
 
 ---
 
@@ -230,13 +237,13 @@ Databricks 브론즈 적재 완료 이력.
 | ix_target_route | 수집대상마스터 | 부분 | data_class, ingest_type, condition_type, condition_frequency, condition_interval | delete_yn='N' |
 | ctl_master_run_status_pkey | 마스터파이프라인수행상태 | UNIQUE(PK) | master_run_id | |
 | ix_mpr_status_start | 마스터파이프라인수행상태 | 일반 | status, start_dt | |
-| ux_mrs_running | 마스터파이프라인수행상태 | UNIQUE(부분) | master_pipeline_nm, ingest_type | status='RUNNING' |
+| ux_mrs_running | 마스터파이프라인수행상태 | UNIQUE(부분) | master_pipeline_nm, ingest_type, trigger_nm | status='RUNNING' AND trigger_nm='SAND BOX' |
 | ctl_ingest_run_pkey | 수집파이프라인수행이력 | UNIQUE(PK) | ingest_pipeline_id | |
 | ix_ipr_created | 수집파이프라인수행이력 | 일반 | created_dt | |
 | ix_ipr_mri | 수집파이프라인수행이력 | 일반 | master_run_id | |
 | ix_ipr_status | 수집파이프라인수행이력 | 일반 | master_run_id, status | |
 | ix_ipr_target | 수집파이프라인수행이력 | 일반 | target_id | |
-| ux_ipr_running | 수집파이프라인수행이력 | UNIQUE(부분) | target_id, ingest_type | status='RUNNING' |
+| ux_ipr_running | 수집파이프라인수행이력 | UNIQUE(부분) | target_id, ingest_type | status='RUNNING' AND ingest_type='FULL' |
 | ctl_dbx_ingest_history_pkey | Databricks적재이력 | UNIQUE(PK) | master_run_id, ingest_pipeline_id | |
 | ctl_trigger_history_pkey | 트리거수행이력 | UNIQUE(PK) | trigger_id, master_run_id | |
 

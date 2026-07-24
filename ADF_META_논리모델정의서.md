@@ -2,11 +2,18 @@
 
 - 대상 메타 DB: Azure Database for PostgreSQL
 - 스키마: `META_ADF`
-- 기준 DDL: `ADF_META_DDL_V1.5.sql`
+- 기준 DDL: `ADF_META_DDL_V1.7.sql`
 - 구성: 엔티티 정의서 → 관계 정의서 → 도메인/코드 정의서 → 속성 정의서
 - 표기: PK=기본키, FK=외래키, UK=유니크키 / Null 열 `N`=NOT NULL, `Y`=허용 / 도메인 열은 §3 코드ID(Dxx)
 - ※ 코드성 값은 반드시 **대문자**로 저장(META/RAW/FULL/INCR/WINDOW 등). 적재 시 대문자 정규화 필수
 - ※ 한글 논리명은 초안이며 검수 대상
+
+### V1.6 대비 주요 변경(V1.7)
+- `ux_mrs_running` 락을 매뉴얼 실행 한정으로 변경(WHERE `trigger_nm='SAND BOX'` 추가) — 스케줄 실행은 마스터 락 미적용, 매뉴얼 FULL/INCR 중복 수행만 차단
+
+### V1.5 대비 주요 변경(V1.6)
+- `ux_ipr_running` 락을 FULL 한정으로 변경(WHERE `ingest_type='FULL'` 추가). INCR은 자식 레벨 락 미적용
+- `ux_mrs_running` 키에 `trigger_nm` 추가 — 트리거명이 다르면 동일 파이프라인+수집타입도 동시 수행 허용
 
 ### V1.4 대비 주요 변경(V1.5)
 - 수집파이프라인수행이력(`ctl_ingest_pipeline_run`)에 자식 레벨 동시수행 락 `ux_ipr_running` 추가 — 동일 대상(target_id)+수집타입(ingest_type) RUNNING 1건 제한
@@ -138,7 +145,7 @@
 | 수정자 | update_by | varchar(100) | | Y | | |
 | 수정일시 | update_dt | timestamptz | | Y | | |
 
-동시수행 제어: `ux_mrs_running` 유니크 인덱스로 (master_pipeline_nm, ingest_type) 당 status='RUNNING' 1건 제한.
+동시수행 제어: `ux_mrs_running` 유니크 인덱스로 **매뉴얼 실행(trigger_nm='SAND BOX')에 한해** (master_pipeline_nm, ingest_type) 당 status='RUNNING' 1건 제한. 스케줄 실행은 마스터 락 미적용, 매뉴얼 FULL/INCR 중복 수행만 차단.
 
 ### 4.3 수집파이프라인수행이력 (ctl_ingest_pipeline_run)
 
@@ -180,7 +187,7 @@
 | 수정자 | update_by | varchar(100) | | Y | | |
 | 수정일시 | update_dt | timestamptz | | Y | | |
 
-동시수행 제어: `ux_ipr_running` 유니크 인덱스로 (target_id, ingest_type) 당 status='RUNNING' 1건 제한. 동일 대상 테이블을 같은 수집유형으로 중복 수집하는 것을 자식 레벨에서 차단.
+동시수행 제어: `ux_ipr_running` 유니크 인덱스로 status='RUNNING' AND ingest_type='FULL'인 (target_id) 당 1건 제한. **FULL 수집에 한해** 동일 대상 테이블 중복 수집을 자식 레벨에서 차단(INCR은 미적용).
 
 ### 4.4 Databricks적재이력 (ctl_dbx_ingest_history)
 
