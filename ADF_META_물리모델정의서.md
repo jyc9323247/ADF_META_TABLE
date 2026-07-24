@@ -7,27 +7,6 @@
 - ※ 코드성 값은 반드시 **대문자**로 저장(META/RAW/FULL/INCR/WINDOW 등). CHECK/인덱스의 `lower()` 전면 제거
 - 구성: 테이블 목록 → 테이블별 명세(컬럼/제약/인덱스) → 인덱스·FK·CHECK 종합 → 특이사항
 
-### V1.6 대비 주요 변경(V1.7)
-- `ux_mrs_running` 락을 매뉴얼 실행 한정으로 변경: WHERE에 `run_mode = 'MANUAL'` 추가 — 스케줄 실행은 마스터 락 미적용, 매뉴얼 FULL/INCR 중복 수행만 차단
-
-### V1.5 대비 주요 변경(V1.6)
-- `ux_ipr_running` 락 범위를 FULL로 한정: WHERE에 `ingest_type='FULL'` 추가 (INCR은 자식 레벨 락 미적용)
-- `ux_mrs_running` 키에 `trigger_nm` 추가: (master_pipeline_nm, ingest_type, trigger_nm) — 트리거가 다르면 동일 파이프라인+수집타입도 동시 수행 허용
-
-### V1.4 대비 주요 변경(V1.5)
-- `ctl_ingest_pipeline_run`에 자식 레벨 동시수행 락 `ux_ipr_running`(UNIQUE 부분, (target_id, ingest_type) WHERE status='RUNNING') 추가 — 동일 대상+수집타입 RUNNING 1건 제한
-
-### V1.3 대비 주요 변경(V1.4)
-- `ctl_master_pipeline_run.skip_type` 컬럼 및 `..._skip_type_check` CHECK 제약 삭제
-
-### V1.2 대비 주요 변경(V1.3)
-- `is_active` → `delete_yn`(논리삭제, Y=삭제/N=사용), `pending_yn`/`adhoc_yn` → `init_wait_yn`(초기수집 대기)
-- 코드성 값 전부 대문자 저장 + CHECK/인덱스 `lower()` 제거, 관련 부분인덱스 조건도 정정
-- **`ctl_run_skip` 테이블 폐지 → `ctl_trigger_history`(트리거 수행 이력 로그)로 대체.** Skip 판단은 ADF 로직, 결과만 기록
-- `ctl_master_pipeline_run`에 `trigger_id`·`exec_group` 추가, `trigger_nm`·`created_by` NOT NULL 강화
-- `ctl_ingest_pipeline_run`에 `incr_start_val`·`file_size_mb` 추가, `is_active`/`pending_yn` → `init_wait_yn` 단일화, `landing_path`·`file_name`·`extract_cnt`·`save_cnt`·`created_by` NOT NULL 강화
-- `ctl_dbx_ingest_history`의 일시·건수·상태·생성자 NOT NULL 강화
-
 ---
 
 ## 0. 테이블 목록
