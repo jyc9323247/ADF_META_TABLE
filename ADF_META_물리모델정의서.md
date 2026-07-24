@@ -8,7 +8,7 @@
 - 구성: 테이블 목록 → 테이블별 명세(컬럼/제약/인덱스) → 인덱스·FK·CHECK 종합 → 특이사항
 
 ### V1.6 대비 주요 변경(V1.7)
-- `ux_mrs_running` 락을 매뉴얼 실행 한정으로 변경: WHERE에 `trigger_nm='SAND BOX'` 추가 — 스케줄 실행은 마스터 락 미적용, 매뉴얼 FULL/INCR 중복 수행만 차단
+- `ux_mrs_running` 락을 매뉴얼 실행 한정으로 변경: WHERE에 `run_mode = 'MANUAL'` 추가 — 스케줄 실행은 마스터 락 미적용, 매뉴얼 FULL/INCR 중복 수행만 차단
 
 ### V1.5 대비 주요 변경(V1.6)
 - `ux_ipr_running` 락 범위를 FULL로 한정: WHERE에 `ingest_type='FULL'` 추가 (INCR은 자식 레벨 락 미적용)
