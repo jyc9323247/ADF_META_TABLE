@@ -8,27 +8,6 @@
 - ※ 코드성 값은 반드시 **대문자**로 저장(META/RAW/FULL/INCR/WINDOW 등). 적재 시 대문자 정규화 필수
 - ※ 한글 논리명은 초안이며 검수 대상
 
-### V1.6 대비 주요 변경(V1.7)
-- `ux_mrs_running` 락을 매뉴얼 실행 한정으로 변경(WHERE `trigger_nm='SAND BOX'` 추가) — 스케줄 실행은 마스터 락 미적용, 매뉴얼 FULL/INCR 중복 수행만 차단
-
-### V1.5 대비 주요 변경(V1.6)
-- `ux_ipr_running` 락을 FULL 한정으로 변경(WHERE `ingest_type='FULL'` 추가). INCR은 자식 레벨 락 미적용
-- `ux_mrs_running` 키에 `trigger_nm` 추가 — 트리거명이 다르면 동일 파이프라인+수집타입도 동시 수행 허용
-
-### V1.4 대비 주요 변경(V1.5)
-- 수집파이프라인수행이력(`ctl_ingest_pipeline_run`)에 자식 레벨 동시수행 락 `ux_ipr_running` 추가 — 동일 대상(target_id)+수집타입(ingest_type) RUNNING 1건 제한
-
-### V1.3 대비 주요 변경(V1.4)
-- `ctl_master_pipeline_run.skip_type` 컬럼 및 관련 CHECK 제약, 도메인 정의(구 D07) 삭제
-
-### V1.2 대비 주요 변경(V1.3)
-- `is_active` → `delete_yn`(논리삭제, 의미 반전: Y=삭제, N=사용), `pending_yn` → `init_wait_yn`(초기수집 대기)
-- 코드성 값 전부 대문자 저장 + CHECK/인덱스의 `lower()` 전면 제거
-- **트리거Skip예외(`ctl_run_skip`) 엔티티 폐지 → 트리거수행이력(`ctl_trigger_history`)으로 대체.** Skip 판단은 ADF 로직이 수행하고 결과만 이력으로 기록
-- `ctl_master_pipeline_run`에 `trigger_id`·`exec_group` 추가, `trigger_nm`·`created_by` NOT NULL로 강화
-- `ctl_ingest_pipeline_run`에 `incr_start_val`(증분 재수집 시작값)·`file_size_mb` 신규 컬럼, `init_wait_yn`으로 플래그 단일화
-- 이력/적재 테이블의 NOT NULL 강화(ctl_dbx_ingest_history의 일시·건수·상태 등)
-
 ---
 
 ## 1. 엔티티 정의서
