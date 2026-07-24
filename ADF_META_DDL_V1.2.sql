@@ -22,8 +22,8 @@ CREATE TABLE ctl_ingest_target_master (
     incr_column_nm       varchar(30)    NULL,
     incr_column_type     varchar(10)    NULL,
     incr_column_hw_val   varchar(100)   NULL,
-    is_active            bpchar(1)      NOT NULL DEFAULT 'y',
-    pending_yn           bpchar(1)      NOT NULL DEFAULT 'y',
+    delete_yn            bpchar(1)      NOT NULL DEFAULT 'n',
+    adhoc_yn             bpchar(1)      NOT NULL DEFAULT 'y',
     created_by           varchar(100)   NULL,
     created_dt           timestamptz    NOT NULL DEFAULT now(),
     update_by            varchar(100)   NULL,
@@ -148,8 +148,8 @@ CREATE TABLE ctl_ingest_pipeline_run (
     incr_column_nm      varchar(30)    NULL,
     incr_column_type    varchar(10)    NULL,
     incr_column_hw_val  varchar(100)   NULL,
-    is_active           bpchar(1)      NOT NULL DEFAULT 'y',
-    pending_yn          bpchar(1)      NOT NULL DEFAULT 'n',
+	incr_start_val      varchar(100)   NULL,
+    adhoc_yn          bpchar(1)        NOT NULL DEFAULT 'n',
     extract_query       text           NOT NULL,
     landing_path        varchar(500)   NOT NULL,
     file_name           varchar(100)   NOT NULL DEFAULT '-',
@@ -214,23 +214,21 @@ CREATE TABLE ctl_dbx_ingest_history (
 
 
 -- ---------------------------------------------------------------------
--- 5) ctl_run_skip : 트리거 skip 예외 목록(opt-in)
+-- 5) ctl_trigger_skip_history : 트리거 수행 이력 
 -- ---------------------------------------------------------------------
-CREATE TABLE ctl_run_skip (
+CREATE TABLE ctl_trigger_history (
 	trigger_id          varchar(100)   NOT null,
     trigger_nm          varchar(200)   NOT NULL,
-    skip_yn             bpchar(1)      NOT NULL DEFAULT 'n',
-    skip_from_dt        timestamptz    NULL,
-    skip_to_dt          timestamptz    NULL,
-    skip_reason         varchar(500)   NULL,
+	master_run_id       varchar(100)   NOT NULL,
+	master_pipeline_nm  varchar(200)   NOT NULL,
+	skip_yn				bpchar(1)      NOT NULL DEFAULT 'n',
+    skip_reason         varchar(200)   NOT NULL,
 	created_by          varchar(100)   NOT NULL,
     created_dt          timestamptz    NOT NULL DEFAULT now(),
     update_by           varchar(100)   NULL,                 
     update_dt           timestamptz    NULL,
 
-    CONSTRAINT ctl_run_skip_pkey PRIMARY KEY (trigger_id),
-    CONSTRAINT ctl_run_skip_check  CHECK (skip_from_dt IS NULL OR skip_to_dt IS NULL OR skip_from_dt <= skip_to_dt),
-    CONSTRAINT ctl_run_skip_check1 CHECK ((skip_from_dt IS NULL) = (skip_to_dt IS NULL)),
+    CONSTRAINT ctl_run_skip_pkey PRIMARY KEY (trigger_id,master_run_id),
     CONSTRAINT ck_skip_yn CHECK (lower(skip_yn::text) IN ('y','n'))
 );
 
@@ -254,8 +252,8 @@ COMMENT ON COLUMN ctl_ingest_target_master.condition_interval  IS 'window 주기
 COMMENT ON COLUMN ctl_ingest_target_master.incr_column_nm      IS '증분 기준(워터마크) 컬럼: IPDTM/CLYM 등';
 COMMENT ON COLUMN ctl_ingest_target_master.incr_column_type    IS '워터마크 값 데이터타입: NUMERIC/DATE/TIMESTAMP/STRING (WHERE 인용 처리용). 기준컬럼 존재 시 필수';
 COMMENT ON COLUMN ctl_ingest_target_master.incr_column_hw_val  IS '현재 하이워터마크 값. 수집 성공 시에만 갱신';
-COMMENT ON COLUMN ctl_ingest_target_master.is_active           IS '활성 여부 Y/N';
-COMMENT ON COLUMN ctl_ingest_target_master.pending_yn          IS '초기수집 대기 여부: Y=대기, N=완료';
+COMMENT ON COLUMN ctl_ingest_target_master.delete_yn           IS '논리 삭제 여부 Y/N';
+COMMENT ON COLUMN ctl_ingest_target_master.adhoc_yn            IS '초기수집 대기 여부: Y=대기, N=완료';
 COMMENT ON COLUMN ctl_ingest_target_master.created_by          IS '생성자';
 COMMENT ON COLUMN ctl_ingest_target_master.created_dt          IS '생성 일시';
 COMMENT ON COLUMN ctl_ingest_target_master.update_by           IS '수정자';
@@ -299,8 +297,7 @@ COMMENT ON COLUMN ctl_ingest_pipeline_run.condition_interval     IS '[스냅샷]
 COMMENT ON COLUMN ctl_ingest_pipeline_run.incr_column_nm         IS '[스냅샷] 증분 기준 컬럼';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.incr_column_type       IS '[스냅샷] 워터마크 값 타입';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.incr_column_hw_val     IS '[스냅샷] 이번 수행에 사용된 HWM 값';
-COMMENT ON COLUMN ctl_ingest_pipeline_run.is_active              IS '[스냅샷] 활성 여부';
-COMMENT ON COLUMN ctl_ingest_pipeline_run.pending_yn             IS '[스냅샷] 초기수집 대기 여부';
+COMMENT ON COLUMN ctl_ingest_pipeline_run.adhoc_yn               IS '[스냅샷] 초기수집 대기 여부';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.extract_query          IS '실제 실행된 추출 쿼리';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.landing_path           IS '실제 랜딩 경로';
 COMMENT ON COLUMN ctl_ingest_pipeline_run.file_name              IS '수집한 파일명';
@@ -335,14 +332,14 @@ COMMENT ON COLUMN ctl_dbx_ingest_history.update_by              IS '수정자';
 COMMENT ON COLUMN ctl_dbx_ingest_history.update_dt              IS '수정 일시';
 
 
-COMMENT ON TABLE  ctl_run_skip IS '트리거 skip 예외 목록(opt-in). 행 없음=RUN, skip_yn=Y=SKIP';
-COMMENT ON COLUMN ctl_run_skip.trigger_id         IS '트리ID (PK)';
-COMMENT ON COLUMN ctl_run_skip.trigger_nm         IS '트리거명';
-COMMENT ON COLUMN ctl_run_skip.skip_yn            IS 'skip 여부 Y/N';
-COMMENT ON COLUMN ctl_run_skip.skip_from_dt       IS 'skip 시작 일시(WINDOW). NULL이면 무기한(FLAG)';
-COMMENT ON COLUMN ctl_run_skip.skip_to_dt         IS 'skip 종료 일시(WINDOW). from/to는 동시 NULL 또는 동시 값';
-COMMENT ON COLUMN ctl_run_skip.skip_reason        IS 'skip 사유';
-COMMENT ON COLUMN ctl_run_skip.created_by         IS '생성자';
-COMMENT ON COLUMN ctl_run_skip.created_dt         IS '생성 일시';
-COMMENT ON COLUMN ctl_run_skip.update_by          IS '수정자';
-COMMENT ON COLUMN ctl_run_skip.update_dt          IS '수정 일시';
+COMMENT ON TABLE  ctl_trigger_history                    IS '트리거 수행 이력 : 마스터 파이프라인 트리거 실행 및 Skip 판단 결과 기록';
+COMMENT ON COLUMN ctl_trigger_history.trigger_id         IS '트리거 ID (PK, @pipeline().TriggerId)';
+COMMENT ON COLUMN ctl_trigger_history.trigger_nm         IS '트리거명 (@pipeline().TriggerName)';
+COMMENT ON COLUMN ctl_trigger_history.master_run_id       IS '마스터 실행 ID (PK, @pipeline().RunId)';
+COMMENT ON COLUMN ctl_trigger_history.master_pipeline_nm IS '마스터 파이프라인명 (@pipeline().Pipeline)';
+COMMENT ON COLUMN ctl_trigger_history.skip_yn            IS 'Skip 여부: Y(Skip됨)/N(정상 실행)';
+COMMENT ON COLUMN ctl_trigger_history.skip_reason        IS 'Skip 사유';
+COMMENT ON COLUMN ctl_trigger_history.created_by        IS '생성자';
+COMMENT ON COLUMN ctl_trigger_history.created_dt        IS '생성 일시';
+COMMENT ON COLUMN ctl_trigger_history.update_by         IS '수정자';
+COMMENT ON COLUMN ctl_trigger_history.update_dt         IS '수정 일시';
