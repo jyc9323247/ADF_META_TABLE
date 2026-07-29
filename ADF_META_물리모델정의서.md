@@ -19,8 +19,8 @@
 | 4 | ctl_dbx_ingest_history | Databricks적재이력 | master_run_id, ingest_pipeline_id | 이력 |
 | 5 | ctl_trigger_history | 트리거수행이력 | trigger_id, master_run_id | 이력(로그) |
 
+<img width="741" height="786" alt="image" src="https://github.com/user-attachments/assets/36aa985e-bb85-4eef-82d2-a1c3e84a6e2a" />
 
-<img width="730" height="792" alt="image" src="https://github.com/user-attachments/assets/a34f2389-44a5-453e-bb15-710aa83c9797" />
 
 ---
 
