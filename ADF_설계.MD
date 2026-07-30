@@ -7,7 +7,7 @@
 |---|---|
 | 오케스트레이션 | Azure Data Factory |
 | 메타 DB | Azure Database for PostgreSQL — `META_ADF` |
-| 기준 모델 | 논리모델 정의서 (DDL V1.7) + 본 문서 DDL 변경분 |
+| 기준 모델 | 논리모델 정의서|
 | 소스 | DB2 / MSSQL / COSMOS 등 (온프레미스는 SHIR HA 2노드 경유) |
 | 적재 | 랜딩존(ADLS Gen2) → Databricks Bronze |
 | 버전 | v1.0 (draft) / 2026-07-28 |
