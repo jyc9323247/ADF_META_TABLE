@@ -279,7 +279,7 @@ AND    NOT EXISTS (                            -- 진행 중 대상 사전 배�
 랜딩 경로는 **메타 컬럼으로 관리하지 않고 표준 규칙으로 조합**한다. 운영자가 관리할 항목이 줄고, 경로 오타로 파일이 엉뚱한 곳에 떨어지는 사고가 원천 차단된다.
 
 ```
-{루트}/{data_class}/{src_db_nm}/{src_schema_nm}/{src_table_nm}/{yyyy}/{MM}/{dd}/
+ingest/{data_class}/batch_date={yyyMMdd}/batch_hour={hh}/pipeline_name={pipeline_name}/{src_db_nm}.{src_schema_nm}.{src_table_nm}.{seq}.{yyyyMMddHHmmss}.parquet
 ```
 ⚠ *실제 경로 체계는 고객 표준 확인 후 확정*
 
