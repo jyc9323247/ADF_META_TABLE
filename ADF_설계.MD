@@ -7,10 +7,10 @@
 |---|---|
 | 오케스트레이션 | Azure Data Factory |
 | 메타 DB | Azure Database for PostgreSQL — `META_ADF` |
-| 기준 모델 | 논리모델 정의서 · `ADF_META_DDL_V1.9.sql` |
+| 기준 모델 | 논리모델 정의서 · `ADF_META_DDL_V1.10.sql` |
 | 소스 | DB2 / MSSQL / COSMOS 등 (온프레미스는 SHIR HA 2노드 경유) |
 | 적재 | 랜딩존(ADLS Gen2) → Databricks Bronze |
-| 버전 | v1.1 (draft) / 2026-07-28 |
+| 버전 | v1.2 (draft) / 2026-07-28 |
 
 ### 문서 체계
 
@@ -279,21 +279,37 @@ AND    NOT EXISTS (                            -- 진행 중 대상 사전 배�
 랜딩 경로는 **메타 컬럼으로 관리하지 않고 표준 규칙으로 조합**한다. 운영자가 관리할 항목이 줄고, 경로 오타로 파일이 엉뚱한 곳에 떨어지는 사고가 원천 차단된다.
 
 ```
-ingest/{data_class}/batch_date={yyyMMdd}/batch_hour={HH}/pipeline_name={pipeline_name}/{src_db_nm}.{src_schema_nm}.{src_table_nm}.{seq}.{yyyyMMddHHmmss}.parquet
+ingest/{data_class}/batch_date={yyyyMMdd}/batch_hour={HH}/pipeline_name={pipeline_name}/
+       {src_db_nm}.{src_schema_nm}.{src_table_nm}.{seq}.{yyyyMMddHHmmss}.parquet
 ```
-⚠ *실제 경로 체계는 고객 표준 확인 후 확정*
+
+| 구성 요소 | 출처 | 역할 |
+|---|---|---|
+| `data_class` | 수집대상마스터 | `META` / `RAW` 분리 |
+| `batch_date` / `batch_hour` | 마스터 회차 시작 시각 | **Hive 스타일 파티션 키** — Databricks에서 파티션 프루닝 가능 |
+| `pipeline_name` | 마스터 파이프라인명 | 조건 튜플별 분리 (`window-based-daily1` 등) |
+| `{src_db_nm}.{src_schema_nm}.{src_table_nm}` | 수집대상마스터 | 파일명만으로 원천 식별 |
+| `seq` | 파티션 분할 시 조각 번호 | 단일 파일이면 `0` 또는 `1` |
+| `{yyyyMMddHHmmss}` | 파일 생성 시각 | **재수행 시 덮어쓰기 방지** |
+
+**`batch_date`·`batch_hour` 가 `key=value` 형태인 것이 핵심이다** — Databricks가 이를 파티션 컬럼으로 인식해, Bronze 적재 시 특정 일자만 읽는 프루닝이 가능하다. 재처리 범위를 폴더 단위로 지정할 수 있다.
+
+**파일명에 타임스탬프가 붙어 재수행이 안전하다** — 같은 대상을 다시 수집해도 이전 파일을 덮어쓰지 않는다. 만회 모드·백필이 겹쳐 읽는 구조와 정합하며, 중복 제거는 Bronze가 담당한다.
 
 **adhoc도 동일 규칙을 따른다.** 앵커의 `src_table_nm` 이 `__ADHOC__` 이므로 경로가 자연히 분리되고, 구분은 파라미터로 받은 `file_name` 이 담당한다. adhoc 전용 경로 규칙을 따로 둘 필요가 없다.
 
-조합된 값은 이력의 `landing_path` 에 확정 기록되어 차일드가 그대로 사용한다.
+조합된 값은 이력의 `landing_path`·`file_name` 에 확정 기록되어 차일드가 그대로 사용한다.
 
 ### 2-6. 차일드(ingest) — 조건값 조회 후 수집
+
+> **① 조건값 조회 단계는 `cond_value_query` 가 등록된 대상만 거친다.** 현재 기준으로 **BIZDAY·CLOSE(소스 조회 케이스)와 TEMPLATE 대상**이 해당하며, WINDOW를 비롯한 표현식 계산 대상은 이 단계를 건너뛰고 곧바로 ②로 간다. `cond_value_query IS NULL` 인 대상은 Lookup 결과에 잡히지 않으므로 별도 분기가 필요 없다.
 
 ```
 차일드 (pl_raw_ingest_db2_MLCRP)
   │
   ▼
 [Lookup] ① 조건값 산출 대상 — DISTINCT cond_value_query
+         (BIZDAY·CLOSE·TEMPLATE 등 cond_value_query 등록 대상만 조회됨)
          WHERE master_run_id = :p_master_run_id
            AND src_db_nm     = :p_src_db_nm
            AND status        = 'PENDING'
@@ -348,7 +364,7 @@ ingest/{data_class}/batch_date={yyyMMdd}/batch_hour={HH}/pipeline_name={pipeline
 | 수집파이프라인수행이력 | `ctl_ingest_pipeline_run` | ADF | **대상 1건이** 어떻게 처리됐는가. 수행시점 스냅샷 보존 |
 | 트리거수행이력 | `ctl_trigger_history` | ADF | **모든** 트리거 실행 로그. Skip 판정 결과 포함 |
 | Databricks API호출이력 | `ctl_dbx_api_call_history` | ADF | REST API **호출**의 성공/실패. ADF 책임 경계의 종점 |
-| Databricks적재이력 | `ctl_dbx_ingest_history` | Databricks | Bronze **적재** 완료 이력 |
+| Databricks적재이력 | `ctl_dbx_ingest_history` | Databricks | Bronze **적재** 완료 이력. `dbx_run_id` 로 호출이력과 연결 |
 
 ```
 수집대상마스터 ──target_id──▶ 수집파이프라인수행이력 ──┐
@@ -462,7 +478,8 @@ util  : pl_{동사}_{대상}
 - **차일드 파이프라인명은 데이터다** — 수집이력 생성 Script가 `ingest_pipeline_nm` 을 확정해 이력에 기록한다. 평시엔 명명규칙으로 조합하고, 마스터의 override 컬럼(NULL 허용)에 값이 있으면 그 값을 쓴다: `COALESCE(t.ingest_pipeline_nm, 'pl_'||lower(data_class)||'_ingest_'||lower(src_type)||'_'||src_db_nm)`
 - **`default` 분기가 방어선이다** — Switch에 없는 이름(메타 오타, 신규 DB의 case 미추가)은 조용히 넘어가지 않고 `FAILED` 로 기록된다. 실패분은 HWM이 전진하지 않으므로 case 추가 후 **다음 회차 만회 모드로 자동 회수**된다.
 - **병렬도 제어** — ForEach `batchCount` 로 동시 실행 수를 조절한다(8장 SHIR 실측 후 조정). 대상 0건인 DB는 Lookup 결과에 없어 호출 자체가 일어나지 않는다.
-- **점진 전환 경로** — 파라미터화 Linked Service 검증이 끝나면, override 컬럼을 공통 차일드(`pl_raw_ingest_common`)로 바꾸는 것만으로 대상별 전환·원복이 가능하다. ADF 배포 없이 메타 UPDATE로 진행한다. ⚠ *SHIR 경유 DB2에서 파라미터화 Linked Service 동작 검증 필요*
+- **차일드는 소스 DB별로 유지한다** — 파라미터화 Linked Service로 차일드를 1개로 통합하는 방안은 **채택하지 않는다.** 연결 문자열·인증을 동적으로 구성하면 SHIR 경유 온프레미스 소스에서 동작 검증 부담이 크고, 장애 시 어느 연결에서 끊겼는지 추적이 어려워진다. 소스 DB가 늘 때 차일드 1개와 Switch case 1줄을 추가하는 비용이 더 낮다.
+- **`ingest_pipeline_nm` override 컬럼은 유지한다** — 명명규칙 예외 대상(특정 DB만 다른 차일드로 처리해야 하는 경우)을 메타 수정만으로 흡수하기 위해서다.
 
 ### 4-3. `pl_call_dbx_api` — Databricks API 호출 (공통)
 
@@ -545,8 +562,8 @@ WITH UR
 
 ```
 ① 하한 후보값 생성
-   ├ WINDOW              : ADF 날짜 함수 표현식   (마스터 · Set Variable)
-   └ BIZDAY·CLOSE·TEMPLATE: 소스 조건값 조회      (차일드 · cond_value_query)
+   ├ cond_value_query IS NULL : ADF 날짜 함수 표현식  (마스터 · Set Variable)
+   └ cond_value_query 있음    : 소스 조건값 조회      (차일드 · Lookup)
         ↓
 ② 하한 확정   : incr_start_val > (recovery_yn='Y' 시 LEAST(후보값, HWM)) > 후보값
 ③ 쿼리 조립   : incr_column_type 별 소스 문법 치환
@@ -554,6 +571,24 @@ WITH UR
 ```
 
 **①만 갈리고 ②③④는 공통이다.** 만회 모드·백필 override·후퇴 차단이 조건 유형과 무관하게 동일하게 작동한다.
+
+### 축 분리 — 업무 의미와 값 획득 경로는 별개다
+
+| 축 | 컬럼 | 값 |
+|---|---|---|
+| **업무 의미** | `condition_type` | `WINDOW`(시간 구간) / `BIZDAY`(영업일 기준) / `CLOSE`(마감 기준) |
+| **값 획득 경로** | `cond_value_query` | NULL = 표현식 계산 / NOT NULL = 소스 조회 |
+
+두 축이 직교하므로 **같은 `condition_type` 이라도 대상별로 경로가 갈릴 수 있다.** 예를 들어 CLOSE는 "매월 3개월 전"처럼 계산되는 케이스와 "마감 상태 테이블 조회"가 필요한 케이스가 공존할 수 있는데, 둘 다 `condition_type='CLOSE'` 로 등록되어 같은 오케스트레이터가 처리한다.
+
+| 컬럼 | 역할 | 필수 |
+|---|---|---|
+| `condition_frequency` | **실행 주기** — 만회 판정 기준일 산출 | 모든 INCR |
+| `condition_interval` | **하한 오프셋** — 몇 주기 전부터 읽을지(겹침 폭) | 표현식 계산 시 |
+
+> **메타 제약이 "조용한 전체 스캔"을 막는다** — `ck_incr_source` 가 "INCR인데 `cond_value_query` 도 `condition_interval` 도 없는" 등록을 거부한다. 후보값을 만들 방법이 없으면 하한이 안 걸린 채 전체를 읽고 성공으로 끝난다.
+>
+> **고객 협의 결과를 기다리지 않아도 된다** — CLOSE·BIZDAY가 어느 경로로 밝혀져도 **메타 등록값만 달라지고 파이프라인·제약·로직은 그대로**다. 축을 분리한 실질적 이득이다.
 
 ### 두 개의 상태 컬럼
 
@@ -630,16 +665,19 @@ END
 
 > 하한 결정(`LEAST`)과 상태 갱신(`GREATEST`) **양쪽에 동일 적용**한다. 한쪽만 캐스팅하면 하한과 HWM이 어긋난다.
 
-### ①-A. WINDOW — ADF 날짜 함수 표현식
+### ①-A. 표현식 계산 — ADF 날짜 함수 (`cond_value_query IS NULL`)
 
 `utcNow()` 는 UTC를 반환하므로 `convertFromUtc` 로 KST 변환이 필수다.
 
-| 주기 | ADF 표현식 | 생성 값 예 |
+| 조건 유형 / 주기 · 간격 | ADF 표현식 | 생성 값 예 |
 |---|---|---|
-| DAILY 1 | `@addDays(convertFromUtc(utcNow(),'Korea Standard Time'), -1, 'yyyy-MM-dd')` | `2026-07-27` |
-| DAILY 3 | `@addDays(convertFromUtc(utcNow(),'Korea Standard Time'), -3, 'yyyy-MM-dd')` | `2026-07-25` |
-| WEEKLY 1 | `@addDays(convertFromUtc(utcNow(),'Korea Standard Time'), -7, 'yyyy-MM-dd')` | `2026-07-21` |
-| TIMESTAMP 정밀도 | `@addHours(convertFromUtc(utcNow(),'Korea Standard Time'), -24, 'yyyy-MM-dd HH:mm:ss')` | `2026-07-27 09:00:00` |
+| WINDOW / DAILY 1 | `@addDays(convertFromUtc(utcNow(),'Korea Standard Time'), -1, 'yyyy-MM-dd')` | `2026-07-27` |
+| WINDOW / DAILY 3 | `@addDays(convertFromUtc(utcNow(),'Korea Standard Time'), -3, 'yyyy-MM-dd')` | `2026-07-25` |
+| WINDOW / WEEKLY 1 | `@addDays(convertFromUtc(utcNow(),'Korea Standard Time'), -7, 'yyyy-MM-dd')` | `2026-07-21` |
+| WINDOW / TIMESTAMP 정밀도 | `@addHours(convertFromUtc(utcNow(),'Korea Standard Time'), -24, 'yyyy-MM-dd HH:mm:ss')` | `2026-07-27 09:00:00` |
+| **CLOSE / MONTHLY 3** | `@addToTime(convertFromUtc(utcNow(),'Korea Standard Time'), -3, 'Month', 'yyMM')` | `2604` |
+
+**CLOSE도 표현식으로 처리된다** — "매월 1회, 3개월 전 마감월부터"처럼 계산 가능한 요건이면 소스 조회가 불필요하다. `condition_type='CLOSE'`, `MONTHLY`, `interval=3` 으로 등록하면 `where CLYM >= '2604'` 가 만들어진다. `CLYM` 이 `yyMM` 4자리 고정폭이라 문자열 비교도 안전하다.
 
 **interval 파라미터화** — `P_INTERVAL` 을 넘기면 표현식 하나로 DAILY 전 변형을 커버한다.
 
@@ -657,38 +695,78 @@ v_start_dt_utc = @addDays(utcNow(), -N, 'yyyy-MM-dd')
 
 | src_type | 저장 기준 | 사용할 하한 |
 |---|---|---|
-| DB2 / MSSQL | KST (로컬 시각) ⚠ *실값 확인 필요* | `v_start_dt_kst` |
+| DB2 / MSSQL | **KST (확정)** | `v_start_dt_kst` |
 | **COSMOS** | **UTC (확정)** | `v_start_dt_utc` |
 
 **변수 선택은 ②(하한 확정)에서 이뤄진다** — `LEAST` 비교가 ②에서 일어나므로 그 시점에 대상의 `src_type` 에 맞는 변수를 골라야 한다. **한 대상의 하한·HWM·저장값은 항상 같은 타임존 기준**이어야 하며, ②③④가 같은 변수를 쓰는지 구현 시 확인한다.
 
-### ①-B. BIZDAY / CLOSE / TEMPLATE — 소스 조건값 조회
+> **후보값 산출을 메타 DB SQL로 옮기지 않는다** — 대상별 `interval` 차이를 흡수할 수 있다는 이점이 있으나, **후보값 계산이 긴 SQL 안에 묻히면 유지·보수가 어려워진다.** ADF `Set Variable` 로 두면 디버그 실행에서 변수값이 그대로 보이고, 표현식만 고쳐 검증할 수 있다. 오케스트레이터가 조건 튜플별로 나뉘어 있어 회차 내 `interval` 이 섞이는 상황도 실질적으로 발생하지 않는다.
+>
+> 이 선택의 대가로 **오케스트레이터를 주기 조합별로 두어야 한다**(`daily1`·`daily3`·`weekly1` …). 조건 튜플 = 파이프라인명 원칙과 일치하므로 설계상 모순은 없다.
 
-ADF 표현식으로 만들 수 없는 값(소스 영업일 캘린더, 업무 마감 상태 등)은 **소스에 물어본다.** 조건값 산출 쿼리를 메타에 저장하고, 차일드가 실행해 결과를 템플릿에 치환한다.
+### ①-B. 소스 조건값 조회 (`cond_value_query` 사용)
+
+ADF 표현식으로 만들 수 없는 값(영업일 카운트, 업무 마감 상태 등)은 **소스에 물어본다.** 조건값 산출 쿼리를 메타에 저장하고, 차일드가 실행해 결과를 템플릿에 치환한다.
 
 **규약** — `cond_value_query` 는 **단일 행**을 반환하고, **반환 컬럼명이 곧 플레이스홀더명**이다. 값이 여러 개여도 별도 매핑 없이 확장된다.
 
-**BIZDAY 등록 예**
+#### BIZDAY 등록 예 (고객 제공 실 사례)
+
+온프렘 정보계 `MLIWP.MLDADM.TBCMB1001` 로 영업일을 관리한다. **2영업일(`RN <= 2`)까지는 전월, 그 이후부터는 당월**을 조회 대상 영업월로 산출한다.
+
+| 실행일 | 영업일 순번 | 산출값 |
+|---|---|---|
+| 2026-07-01 | 1영업일 | `202606` |
+| 2026-07-03 | 3영업일 | `202607` |
 
 | 컬럼 | 값 |
 |---|---|
-| `condition_type` / `query_type` | `BIZDAY` / `TEMPLATE` |
-| `incr_column_nm` / `incr_column_type` | `IPDTM` / `DATE` |
-| `cond_value_query` | `SELECT MAX(BIZ_DT) AS COND_BIZDAY FROM CRP.TB_CALENDAR WHERE BIZ_YN='Y' AND BIZ_DT < CURRENT DATE WITH UR` |
-| `src_query_template` | `select * from CRP.TB_TRAN where IPDTM >= {COND_BIZDAY} with ur` |
+| `condition_type` / `condition_frequency` | `BIZDAY` / `DAILY` |
+| `query_type` | `TEMPLATE` |
+| `incr_column_nm` / `incr_column_type` | `BZ_YM` / `STRING` |
+| `src_query_template` | `select * from MLDADM.TB_BIZ_FACT where BZ_YM >= {FRTO} with ur` |
 
-**CLOSE 등록 예**
+```sql
+-- cond_value_query
+SELECT
+    MAX(
+        CASE
+            WHEN RN <= 2
+            THEN SUBSTR(HEX(CURRENT DATE - 1 MONTH), 1, 6)
+            ELSE SUBSTR(HEX(CURRENT DATE), 1, 6)
+        END
+    ) FRTO
+FROM (
+    SELECT
+        ROWNUM RN,
+        SOLR_DT CLDT
+    FROM MLDADM.TBCMB1001 Y
+    WHERE
+        Y.HLDY_CD = '00'
+        AND Y.BZ_YM  = SUBSTR(HEX(CURRENT DATE), 1, 6)
+        AND Y.SOLR_DT <= HEX(CURRENT DATE)
+) CHK_FRTO
+```
+
+> **반환 컬럼명 `FRTO` 가 곧 플레이스홀더 `{FRTO}` 가 된다** — 규약이 그대로 적용되므로 별도 매핑 설정이 없다.
+>
+> **영업일 캘린더가 소스 DB 안에 있다** — 별도 조회 경로가 필요 없고, `cond_value_query` 하나로 통합된다. 협의 항목이었던 "캘린더 위치"가 이 사례로 해소됐다.
+>
+> **BIZDAY의 산출물이 날짜가 아니라 영업월(`YYYYMM`)이다** — 영업일 카운트로 "어느 월을 읽을지"를 판단하는 구조라 결과 형태는 CLOSE와 같다. 두 유형의 차이는 **판단 근거**(영업일 순번 vs 마감 플래그)뿐이며, 처리 경로는 완전히 동일하다.
+
+#### CLOSE 등록 예 — 소스 조회 케이스
 
 | 컬럼 | 값 |
 |---|---|
-| `condition_type` / `query_type` | `CLOSE` / `TEMPLATE` |
+| `condition_type` / `condition_frequency` | `CLOSE` / `MONTHLY` |
+| `query_type` | `TEMPLATE` |
 | `incr_column_nm` / `incr_column_type` | `CLYM` / `STRING` |
 | `cond_value_query` | `SELECT MAX(CLYM) AS COND_CLYM FROM CRP.TB_CLOSE WHERE CLOSE_YN='Y' WITH UR` |
 | `src_query_template` | `select * from CRP.TB_CLOSE_FACT where CLYM >= {COND_CLYM} with ur` |
 
 > **`>=` 를 쓴다.** `= {COND_CLYM}` 로 쓰면 **만회가 불가능**하다. `LEAST(cond_value, HWM)` 로 하한을 되돌려도 등호 비교라 그 월만 읽는다. `>=` 여야 놓친 마감월까지 회수된다.
 >
-> **BIZDAY·CLOSE의 메타 수용이 이 구조로 성립한다** — 마감년월이 업무 마감 상태에 좌우돼도 소스에 물어보면 되고, 날짜 함수로 표현할 필요가 없다. 조건 유형별 특수 처리가 하나의 메커니즘으로 수렴한다.
+> ⚠ **CLOSE의 실제 요건 확인 필요** — 현재까지 확인된 것은 "CLYM 기준 마감년월 데이터 조회"뿐이다. 소스 조회가 필요한지, 표현식(①-A의 `MONTHLY 3`)으로 충분한지는 미확정이다. **어느 쪽이든 메타 등록값만 달라지므로 설계 변경은 없다.**
 
 **조건값 조회 방어**
 
@@ -949,7 +1027,7 @@ GROUP  BY master_pipeline_nm;
 | API 호출 성공률 | `ctl_dbx_api_call_history` | ADF↔Databricks 연계 건전성 |
 | **End-to-End 완결** | 호출이력 × 적재이력 대조 | 호출은 성공했는데 적재가 없는 회차 탐지 |
 
-> **폴링을 없앤 대신 대조로 확인한다** — "호출 성공 후 일정 시간이 지나도 `ctl_dbx_ingest_history` 에 해당 `master_run_id` 기록이 없는 경우"의 탐지가 End-to-End 누락을 잡는 유일한 경로다.
+> **폴링을 없앤 대신 대조로 확인한다** — "호출 성공 후 일정 시간이 지나도 `ctl_dbx_ingest_history` 에 해당 회차 기록이 없는 경우"의 탐지가 End-to-End 누락을 잡는 유일한 경로다. Databricks가 `dbx_run_id` 를 함께 기록하므로 `master_run_id` + `dbx_run_id` 양쪽으로 정확히 연결된다.
 
 ### 별도 구축이 필요한 것
 
@@ -988,15 +1066,18 @@ GROUP  BY master_pipeline_nm;
 | # | 항목 | 결정 |
 |---|---|---|
 | 1 | **증분 하한 기준** | 후보값 + HWM 하이브리드. 정상은 후보값, 만회 모드는 `LEAST(후보값, HWM)` |
-| 2 | **하한 후보값 생성** | WINDOW = ADF 날짜 함수(마스터) / BIZDAY·CLOSE·TEMPLATE = **소스 조건값 조회**(차일드) |
-| 3 | **만회 모드 판정** | `last_success_dt` 기반, 원인 무관. 기준일은 `CONDITION_TYPE` 별. 판정은 마스터(`recovery_yn`), 적용은 차일드 |
+| 2 | **하한 후보값 생성** | **`cond_value_query` 유무로 갈린다** — NULL이면 ADF 날짜 함수(마스터 `Set Variable`), 있으면 소스 조회(차일드). `condition_type`(업무 의미)과 **직교하는 축** |
+| 2-1 | **후보값 산출 위치** | ADF `Set Variable` **유지**. 메타 DB SQL로 이관하지 않는다 — 계산이 긴 SQL에 묻히면 유지·보수가 어려워짐 |
+| 3 | **만회 모드 판정** | `last_success_dt` 기반, 원인 무관. 기준일은 `condition_frequency`(모든 INCR 필수)로 산출. 판정은 마스터(`recovery_yn`), 적용은 차일드 |
+| 3-1 | **조건 컬럼 의미** | `condition_frequency`=실행 주기(만회 기준, 모든 INCR 필수) / `condition_interval`=하한 오프셋(표현식 계산 시 필수) |
 | 4 | **HWM 정의 / 갱신** | 마지막 성공 회차가 사용한 하한. `GREATEST(이번 하한, 기존 HWM)` — 후퇴하지 않음 |
 | 5 | **상한 처리** | 상한 컬럼 없음. 유입분은 다음 회차가 겹쳐 읽고 Bronze가 흡수 |
-| 6 | **BIZDAY / CLOSE 메타 수용** | `cond_value_query` 로 소스에 조건값을 물어 해결. 조건 유형별 특수 처리가 하나의 메커니즘으로 수렴 |
+| 6 | **BIZDAY 메타 수용** | 영업일 캘린더가 **소스 DB(`MLIWP.MLDADM.TBCMB1001`)에 존재** — `cond_value_query` 로 통합. 산출물은 영업월(`YYYYMM`) |
+| 6-1 | **CLOSE 메타 수용** | 표현식(`MONTHLY`+`interval`)·소스 조회 **양쪽 다 수용**. 실제 요건 확인 전에도 설계 확정 가능 |
 | 7 | **복잡 정형 쿼리** | `query_type='TEMPLATE'` + `src_query_template` 플레이스홀더 치환. 하한 규칙 전부 재사용 |
 | 8 | **조건값 공유** | 쿼리 단위로 **회차당 1회만** 소스 조회. `cond_value IS NULL` 조건으로 재시도 시 재조회 방지 |
 | 9 | **adhoc** | **전용 오케스트레이터**(`pl_raw_orch_adhoc`) + 소스 DB당 앵커(`target_kind='ADHOC'`). 파라미터로 `src_db_nm`·`file_name`·`extract_query` 전달. Databricks 호출 없음 |
-| 10 | **랜딩 경로** | **메타 컬럼 없이 표준 규칙으로 조합.** adhoc도 동일 규칙 (앵커의 `src_table_nm` 으로 자연 분리) |
+| 10 | **랜딩 경로** | **메타 컬럼 없이 표준 규칙으로 조합** — `ingest/{data_class}/batch_date=/batch_hour=/pipeline_name=/{db}.{schema}.{table}.{seq}.{timestamp}.parquet`. Hive 파티션 키 + 타임스탬프 파일명으로 재수행 안전. adhoc도 동일 규칙 |
 | 11 | **Bronze 중복 처리** | **Databricks에서 수행** — 키 기준 dedup/upsert. 본 설계의 전제 조건 |
 | 12 | **Bronze 완료 확인** | ADF는 폴링하지 않음. 책임 경계는 API 호출 성공까지. 완결 확인은 호출이력 × 적재이력 대조 |
 | 13 | **공통 파이프라인** | `pl_set_master_pl`(`RUN`/`STATUS`/`STATUS_UPDATE`) · `pl_dispatch_ingest` · `pl_call_dbx_api`. 수집이력 생성 Script는 오케스트레이터에 유지 |
@@ -1010,7 +1091,10 @@ GROUP  BY master_pipeline_nm;
 | 21 | **테스트 실행** | `P_TEST_YN='Y'` → `run_mode='TEST'`. 이력 기록, 진행점 갱신 제외 |
 | 22 | **백필** | 상한 없음, HWM 후퇴 차단, 검증 6항목 전건 중단, 기존 오케스트레이터 수동 기동 |
 | 23 | **NUMERIC 비교** | `::numeric` 캐스팅 후 비교. `LEAST`·`GREATEST` 양쪽 동일 적용 |
-| 24 | **COSMOS 타임존** | UTC 저장 확정. 하한 변수 KST·UTC 이원화, ② 하한 확정 단계에서 `src_type` 별 선택 |
+| 24 | **소스 타임존** | **DB2·MSSQL = KST, COSMOS = UTC (모두 확정).** 하한 변수 KST·UTC 이원화, ② 하한 확정 단계에서 `src_type` 별 선택 |
+| 24-1 | **차일드 구성** | **소스 DB별 유지.** 파라미터화 Linked Service를 통한 차일드 통합은 **미채택** — 동적 연결 구성의 검증 부담·장애 추적 난이도가 이득보다 크다 |
+| 24-2 | **Databricks 이력 연계** | `ctl_dbx_ingest_history` 에 **`dbx_run_id` 기록** — 호출이력과 대조해 End-to-End 추적 |
+| 24-3 | **모니터링 구축** | 메타 이력 기반으로 **별도 구축 진행** (대시보드·알림·정기 점검). ADF 범위 밖이나 구축은 확정 |
 | 25 | **IR 구성** | SHIR HA 2노드. 리소스 모니터링 후 스케일 아웃/업 요청 |
 | 26 | **모니터링 범위** | ADF 범위는 이력 데이터 적재까지. 대시보드·알림은 별도 구축 |
 
@@ -1018,13 +1102,9 @@ GROUP  BY master_pipeline_nm;
 
 | # | 항목 | 내용 | 영향 |
 |---|---|---|---|
-| 1 | **모니터링 구축** | 대시보드·알림의 구축 주체·도구·일정 — ADF 범위 밖(10장). "N일 이상 성공 없는 대상" 알림은 트리거 중단을 탐지하는 유일한 수단 | **높음** |
-| 2 | **Databricks 이력 연계 키** | `ctl_dbx_ingest_history` 에 `dbx_run_id` 기록 여부 — **Databricks 파트 협의** | 중 |
-| 3 | **DB2 / MSSQL 타임존** | 증분 컬럼 실값을 KST 현재시각과 대조해 저장 기준 확인 (COSMOS는 UTC 확정) | 중 |
-| 4 | **영업일 캘린더 위치** | 소스 DB 내부면 `cond_value_query` 로 통합, 별도 DB면 별도 조회 경로 필요 | 중 |
-| 5 | **TEMPLATE 대상 규모** | 복잡 정형 쿼리 대상 건수·소스 DBMS 분포 — **고객 확인**. 수십 건에 여러 DBMS면 소스 View 생성 요청 등 대안 검토 | 중 |
-| 6 | **만회 회차 조회량** | 장기 중단 후 첫 성공 회차의 조회 범위 급증 — 대용량 대상·SHIR 부하 확인 | 중 |
-| 7 | **이력 보존 기간** | 이력 5종의 보존·정리 주기 — **고객 협의**. `request/response_body`·`extract_query` 가 `text` 라 증가 빠를 수 있음. 이력 정리는 만회 판정에 영향 없음 | 중 |
-| 8 | **표준 랜딩 경로 체계** | 경로 조합 규칙 확정 (`{루트}/{data_class}/{src_db_nm}/…`) — 고객 표준 확인 | 중 |
-| 9 | **파라미터화 Linked Service** | SHIR 경유 DB2에서 동작 검증 — 공통 차일드 전환의 전제 (4-2) | 중 |
-| 10 | **Copy `timeout` 값** | 환경 기본값 실측 후 대상 특성별 조정. 초기수집은 파티셔닝과 세트로 결정 | 낮음 |
+| 1 | **CLOSE 실제 요건** | CLYM 마감년월 기준의 산출 방식 — 표현식(N개월 전) vs 소스 마감 상태 조회. **고객 확인**. 어느 쪽이든 메타 등록값만 달라지므로 설계 변경 없음 | 중 |
+| 2 | **TEMPLATE 대상 규모** | 복잡 정형 쿼리·조건값 조회 대상 건수와 소스 DBMS 분포 — **고객 확인**. 수십 건에 여러 DBMS면 소스 View 생성 요청 등 대안 검토 | 중 |
+| 3 | **만회 회차 조회량** | 장기 중단 후 첫 성공 회차의 조회 범위 급증 — 대용량 대상·SHIR 부하 확인 | 중 |
+| 4 | **이력 보존 기간** | 이력 5종의 보존·정리 주기 — **고객 협의**. `request/response_body`·`extract_query` 가 `text` 라 증가 빠를 수 있음. 이력 정리는 만회 판정에 영향 없음 | 중 |
+| 5 | **모니터링 구축 상세** | 도구 선정·알림 채널·임계값 — 구축 자체는 확정, 세부는 미정 | 중 |
+| 6 | **Copy `timeout` 값** | 환경 기본값 실측 후 대상 특성별 조정. 초기수집은 파티셔닝과 세트로 결정 | 낮음 |
