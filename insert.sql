@@ -24,14 +24,15 @@ insert
     src_db_nm,
     src_schema_nm,
     src_table_nm,
-    tgt_db_nm,
-    tgt_schema_nm,
+    cdc_tgt_db_nm,
+    cdc_tgt_schema_nm,
     partition_clause,
     exec_group,
     delete_yn,
     init_wait_yn,
     created_by,
     created_dt)
-values('RAW', 'FULL', 'DB2', 'XMETA', 'DB2INT1', 'LINEITEM', NULL, NULL, '', '', 'N'::bpchar, 'Y'::bpchar, 'ADF', now()),
-('RAW', 'FULL', 'DB2', 'XMETA', 'DB2INT1', 'TEST_CLYM', NULL, NULL, '', '', 'N'::bpchar, 'Y'::bpchar, 'ADF', now())
+values('RAW', 'FULL', 'DB2', 'XMETA', 'DB2INT1', 'LINEITEM', NULL, NULL, '', '', 'N'::bpchar, 'Y'::bpchar, 'ADF', now())
+,('RAW', 'FULL', 'DB2', 'XMETA', 'DB2INT1', 'TEST_CLYM', NULL, NULL, '', '', 'N'::bpchar, 'Y'::bpchar, 'ADF', now())
+,('RAW', 'FULL', 'DB2', 'XMETA', 'DB2INT1', 'TEST_CLYM', 'MLCRP', 'DAER', '', '', 'N'::bpchar, 'Y'::bpchar, 'ADF', now())
 ;
