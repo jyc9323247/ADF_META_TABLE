@@ -23,8 +23,9 @@
 --      Databricks REST API 호출 이력. ADF 책임 경계의 종점
 -- =====================================================================
 
--- CREATE SCHEMA IF NOT EXISTS "META_ADF";
-SET search_path TO "META_ADF", public;
+CREATE SCHEMA IF NOT EXISTS "ADFADM";
+
+SET search_path TO "ADFADM", public;
 
 -- ---------------------------------------------------------------------
 -- 1) ctl_ingest_target_master : 수집 대상 마스터 (유일한 수작업 관리 테이블)
