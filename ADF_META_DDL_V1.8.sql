@@ -59,7 +59,7 @@ CREATE TABLE ctl_ingest_target_master (
     CONSTRAINT ck_data_class  CHECK (data_class  IN ('META','RAW')),
     CONSTRAINT ck_ingest_type CHECK (ingest_type IN ('FULL','INCR')),
     CONSTRAINT ctl_ingest_target_master_condition_type_check
-        CHECK (condition_type IN ('WINDOW','BIZDAY','CLOSE')),
+        CHECK (condition_type IN ('BATCH','BIZDAY','CLOSE')),
     CONSTRAINT ctl_ingest_target_master_condition_frequency_check
         CHECK (condition_frequency IN ('MINUTELY','HOURLY','DAILY','WEEKLY','MONTHLY','YEARLY')),
     CONSTRAINT ck_incr_col_type
@@ -75,15 +75,15 @@ CREATE TABLE ctl_ingest_target_master (
     CONSTRAINT ck_incr_needs_type CHECK (
         ingest_type <> 'INCR' OR condition_type IS NOT NULL
     ),
-    -- WINDOW: frequency+interval+기준컬럼 필수
-    CONSTRAINT ck_window_params CHECK (
-        condition_type IS DISTINCT FROM 'WINDOW'
+    -- BATCH: frequency+interval+기준컬럼 필수
+    CONSTRAINT ck_BATCH_params CHECK (
+        condition_type IS DISTINCT FROM 'BATCH'
         OR (condition_frequency IS NOT NULL AND condition_interval IS NOT NULL
             AND incr_column_nm IS NOT NULL)
     ),
-    -- frequency는 WINDOW에서만
-    CONSTRAINT ck_freq_window_only CHECK (
-        condition_frequency IS NULL OR condition_type = 'WINDOW'
+    -- frequency는 BATCH에서만
+    CONSTRAINT ck_freq_BATCH_only CHECK (
+        condition_frequency IS NULL OR condition_type = 'BATCH'
     ),
     -- BIZDAY/CLOSE: 기준컬럼 필수
     CONSTRAINT ck_bizday_col CHECK (
@@ -153,15 +153,6 @@ CREATE TABLE ctl_master_pipeline_run (
 CREATE INDEX ix_mpr_status_start ON ctl_master_pipeline_run
     USING btree (status, start_dt);
 
--- [V1.8] 동시수행 방지 (전 기동방식 적용)
---   · 락 키   : (파이프라인명, 수집유형, 초기수집여부)
---   · 락 범위 : PENDING + RUNNING  (RUN 액션이 PENDING으로 INSERT하므로 즉시 락)
---   · 매뉴얼 한정 해제 : 스케줄 초기수집 도입으로 스케줄 간 충돌도 차단 대상
---   · 초기수집 ↔ 정규 FULL : init_yn 으로 키가 갈려 동시 허용
---   · 초기수집 ↔ 초기수집(수동 포함) : 동일 키 → 차단
-CREATE UNIQUE INDEX ux_mrs_running ON ctl_master_pipeline_run
-    USING btree (master_pipeline_nm, ingest_type, init_yn)
-    WHERE (status IN ('PENDING','RUNNING'));
 
 -- ---------------------------------------------------------------------
 -- 3) ctl_ingest_pipeline_run : 차일드(수집) 수행 이력 팩트 (수행시점 스냅샷)
@@ -222,13 +213,6 @@ CREATE INDEX ix_ipr_target  ON ctl_ingest_pipeline_run USING btree (target_id);
 CREATE INDEX ix_ipr_dispatch ON ctl_ingest_pipeline_run
     USING btree (master_run_id, status, ingest_pipeline_nm);
 
--- [V1.8] 자식(수집) 동시수행 방지
---   · 락 범위를 PENDING+RUNNING 으로 확대
---     (이력이 PENDING 으로 생성되므로, 생성 시점부터 동일 대상 중복 편입을 차단)
---   · FULL 한정 유지 : 초기수집 ↔ 정규 FULL 경계 시점의 동일 테이블 중복 수집 방어
-CREATE UNIQUE INDEX ux_ipr_running ON ctl_ingest_pipeline_run
-    USING btree (target_id, ingest_type)
-    WHERE (status IN ('PENDING','RUNNING') AND ingest_type = 'FULL');
 
 -- ---------------------------------------------------------------------
 -- 4) ctl_dbx_api_call_history : Databricks REST API 호출 이력  [V1.8 신규]
