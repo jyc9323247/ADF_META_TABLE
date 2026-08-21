@@ -36,6 +36,8 @@ CREATE TABLE ctl_ingest_target_master (
     src_db_nm            varchar(20)    NOT NULL,
     src_schema_nm        varchar(30)    NOT NULL,
     src_table_nm         varchar(100)   NOT NULL,
+    cdc_tgt_db_nm        varchar(20)    NULL,
+	cdc_tgt_schema_nm    varchar(20)    NULL,
     partition_clause     varchar(100)   NULL,
     data_class           varchar(4)     NOT NULL,
     ingest_type          varchar(4)     NOT NULL,
@@ -158,6 +160,7 @@ CREATE INDEX ix_mpr_status_start ON ctl_master_pipeline_run
 -- 3) ctl_ingest_pipeline_run : 차일드(수집) 수행 이력 팩트 (수행시점 스냅샷)
 -- ---------------------------------------------------------------------
 CREATE TABLE ctl_ingest_pipeline_run (
+    CLYM                   varchar(6)  NOT NULL 
     ingest_pipeline_id     varchar(100) NOT NULL DEFAULT gen_random_uuid()::text,
     master_run_id          varchar(100) NOT NULL,
     master_pipeline_nm     varchar(200) NOT NULL,
@@ -168,6 +171,8 @@ CREATE TABLE ctl_ingest_pipeline_run (
     src_db_nm              varchar(20)  NOT NULL,
     src_schema_nm          varchar(30)  NOT NULL,
     src_table_nm           varchar(100) NOT NULL,
+    cdc_tgt_db_nm          varchar(20)  NULL,
+	cdc_tgt_schema_nm      varchar(20)  NULL,
     data_class             varchar(4)   NOT NULL,
     ingest_type            varchar(4)   NOT NULL,
     exec_group             varchar(20)  NULL,
@@ -194,7 +199,7 @@ CREATE TABLE ctl_ingest_pipeline_run (
     created_dt             timestamptz  NOT NULL DEFAULT now(),
     update_by              varchar(100) NULL,
     update_dt              timestamptz  NULL,
-    CONSTRAINT ctl_ingest_run_pkey PRIMARY KEY (ingest_pipeline_id),
+    CONSTRAINT ctl_ingest_run_pkey PRIMARY KEY (clym, ingest_pipeline_id),
     CONSTRAINT ctl_ingest_pipeline_run_master_run_id_fkey
         FOREIGN KEY (master_run_id) REFERENCES ctl_master_pipeline_run(master_run_id),
     CONSTRAINT ctl_ingest_pipeline_run_target_id_fkey
