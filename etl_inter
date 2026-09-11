@@ -1,6 +1,4 @@
-아래는 제공해주신 **Architecture Flow / Mermaid 시퀀스**를 반영해서 전체 구조와 문구를 정리한 Azure DevOps Wiki용 Markdown입니다. 그대로 붙여 넣을 수 있습니다.
 
-````markdown
 # ETL 배치 완료 시그널 테이블 초안 개선
 
 > 온프레미스 TWS/ETL 배치 완료 상태를 각 Source DB의 `TB_ETL_BATCH_SIGNAL`에 기록하고,  
