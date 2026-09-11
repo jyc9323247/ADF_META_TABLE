@@ -1,0 +1,941 @@
+아래는 제공해주신 **Architecture Flow / Mermaid 시퀀스**를 반영해서 전체 구조와 문구를 정리한 Azure DevOps Wiki용 Markdown입니다. 그대로 붙여 넣을 수 있습니다.
+
+````markdown
+# ETL 배치 완료 시그널 테이블 초안 개선
+
+> 온프레미스 TWS/ETL 배치 완료 상태를 각 Source DB의 `TB_ETL_BATCH_SIGNAL`에 기록하고,  
+> ADF는 `GROUP + SUCCESS` 시그널을 주기적으로 조회하여 후속 ETL Pipeline을 실행한다.
+
+[[_TOC_]]
+
+---
+
+## 1. 요약
+
+| 구분 | 설계 내용 |
+|---|---|
+| DBMS | DB2 LUW |
+| 시그널 테이블 | `TB_ETL_BATCH_SIGNAL` |
+| 테이블 위치 | 각 Source DB별 생성 |
+| 시그널 유형 | `JOB`, `GROUP` |
+| 개별 Job 완료 | `SIGNAL_TYPE_CD = 'JOB'` |
+| 배치 그룹 완료 | `SIGNAL_TYPE_CD = 'GROUP'` |
+| ADF 실행 대상 | `GROUP + SUCCESS` |
+| Source DB 처리 | INSERT Only |
+| ADF Source DB 접근 | SELECT Only |
+| 처리 상태 | `SUCCESS`, `FAIL` |
+| 가변 파라미터 | `PARAM_JSON` |
+| 재실행 구분 | `BATCH_RUN_ID` |
+| Signal 중복 식별 | `SOURCE_SYSTEM_CD + SIGNAL_ID` |
+| Polling 방식 | Safety Window 기반 조회 |
+| ADF 처리 이력 | ADF Meta DB 관리 |
+| 시간 기준 | KST (UTC+9) |
+
+### 주요 처리 원칙
+
+1. 개별 TWS/ETL Job 완료 시 `JOB` Signal을 INSERT한다.
+2. 온프레미스에서 Batch Group의 전체 필수 Job 완료 여부를 판단한다.
+3. 모든 필수 Job이 정상 완료되면 `GROUP + SUCCESS` Signal을 INSERT한다.
+4. ADF는 `GROUP + SUCCESS` Signal만 후속 처리 대상으로 조회한다.
+5. ADF는 `SOURCE_SYSTEM_CD + SIGNAL_ID`를 기준으로 중복 처리 여부를 확인한다.
+6. 신규 Signal인 경우 `PARAM_JSON`을 이용하여 후속 Pipeline을 실행한다.
+7. ADF Pipeline 실행 결과는 ADF Meta DB에서 관리한다.
+
+---
+
+## 2. 전체 아키텍처 흐름 (Architecture Flow)
+
+### 2.1 시퀀스 다이어그램 (Mermaid)
+
+::: mermaid
+sequenceDiagram
+    autonumber
+    participant TWS as TWS / On-Prem ETL
+    participant SDB as Source DB<br/>(TB_ETL_BATCH_SIGNAL)
+    participant ADF as Azure Data Factory
+    participant MDB as ADF Meta DB
+
+    rect rgb(240, 248, 255)
+    note over TWS, SDB: 1. 온프레미스 개별 Job 실행 단계
+    loop 개별 Job 완료 시
+        TWS->>SDB: INSERT JOB Signal (SUCCESS/FAIL)
+    end
+    end
+
+    rect rgb(255, 245, 238)
+    note over TWS, SDB: 2. 그룹 완료 판정 및 Group Signal 생성
+    TWS->>TWS: 전체 필수 Job 완료 여부 체크
+    alt 모든 필수 Job SUCCESS
+        TWS->>SDB: INSERT GROUP Signal (STATUS = 'SUCCESS', PARAM_JSON)
+    else 하나라도 FAIL 발생
+        TWS->>SDB: INSERT GROUP Signal (STATUS = 'FAIL') [선택]
+    end
+    end
+
+    rect rgb(240, 255, 240)
+    note over SDB, MDB: 3. ADF 감지 및 오케스트레이션
+    loop Safety Window Polling (SELECT Only)
+        ADF->>SDB: SELECT GROUP + SUCCESS Signal
+    end
+    SDB-->>ADF: 신규 Signal 데이터 반환
+    ADF->>MDB: 중복 체크 (SOURCE_SYSTEM_CD + SIGNAL_ID)
+    alt 신규 시그널인 경우
+        ADF->>MDB: 처리 상태 기록 (RUNNING)
+        ADF->>ADF: PARAM_JSON 파싱 후 후속 Pipeline 실행
+        ADF->>MDB: 최종 처리 상태 업데이트 (SUCCESS/FAIL)
+    else 이미 처리된 시그널
+        ADF->>ADF: Skip (무시)
+    end
+    end
+:::
+
+### 2.2 전체 처리 구조도
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    온프레미스 영역 (TWS / ETL)                │
+│                                                             │
+│  [JOB_01 완료] ──> JOB Signal INSERT                        │
+│  [JOB_02 완료] ──> JOB Signal INSERT                        │
+│  ...                                                        │
+│  [JOB_N  완료] ──> JOB Signal INSERT                        │
+│                           │                                 │
+│                           ▼                                 │
+│               전체 필수 Job SUCCESS 확인                     │
+│                           │                                 │
+│                           ▼                                 │
+│             GROUP SUCCESS Signal 생성 (INSERT)              │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                Source DB: TB_ETL_BATCH_SIGNAL               │
+│                                                             │
+│  SIGNAL_TYPE = 'GROUP' | STATUS = 'SUCCESS'                 │
+│  BATCH_GROUP_CD, BATCH_RUN_ID, PARAM_JSON                   │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            │ ADF Polling (SELECT Only)
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   클라우드 영역 (Azure Data Factory)          │
+│                                                             │
+│  1. Safety Window 기반 GROUP + SUCCESS 조회                  │
+│  2. Meta DB 중복 수집 체크 (SOURCE_SYSTEM_CD + SIGNAL_ID)     │
+│  3. 신규 시그널의 PARAM_JSON 파싱                             │
+│  4. 대상 ADF 후속 ETL Pipeline 실행                          │
+│  5. Meta DB에 Pipeline 최종 실행 결과 기록                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 2.3 영역별 역할
+
+| 영역 | 주요 역할 |
+|---|---|
+| TWS / On-Prem ETL | 개별 Job 실행 및 완료 상태 기록 |
+| TWS / On-Prem ETL | 전체 필수 Job 완료 여부 판단 |
+| TWS / On-Prem ETL | `GROUP SUCCESS` Signal 생성 |
+| Source DB | `JOB`, `GROUP` Signal 저장 |
+| ADF | Source DB의 `GROUP + SUCCESS` Signal Polling |
+| ADF | `PARAM_JSON` 기반 후속 Pipeline 실행 |
+| ADF Meta DB | Signal 중복 처리 방지 및 Pipeline 실행 이력 관리 |
+
+---
+
+## 3. 설계 원칙
+
+1. 각 Source DB에 동일한 구조의 `TB_ETL_BATCH_SIGNAL`을 생성한다.
+2. Source Batch는 실행 결과를 신규 Row로 INSERT한다.
+3. 기존 Signal 데이터는 UPDATE / DELETE하지 않는다.
+4. 개별 TWS/ETL Job 결과는 `JOB` Signal로 기록한다.
+5. Batch Group 전체 완료 결과는 `GROUP` Signal로 기록한다.
+6. Batch Group 완료 여부는 온프레미스 TWS/ETL 영역에서 판단한다.
+7. ADF는 `GROUP + SUCCESS` Signal만 후속 처리 대상으로 사용한다.
+8. 업무별 가변 Parameter는 `PARAM_JSON`으로 관리한다.
+9. ADF는 Source DB에 SELECT 권한만 사용한다.
+10. ADF 처리 이력 및 중복 처리 방지 정보는 ADF Meta DB에서 관리한다.
+11. Timestamp는 KST(UTC+9) 기준으로 저장한다.
+
+---
+
+## 4. Signal 유형
+
+### 4.1 JOB Signal
+
+개별 TWS/ETL Job의 실행 결과를 기록한다.
+
+```text
+SIGNAL_TYPE_CD = 'JOB'
+```
+
+예시:
+
+```text
+SALES_DAILY / JOB_01 / SUCCESS
+SALES_DAILY / JOB_02 / SUCCESS
+SALES_DAILY / JOB_03 / FAIL
+```
+
+개별 Job Signal은 온프레미스에서 Batch Group 완료 여부를 확인하기 위한 실행 이력으로 사용한다.
+
+### 4.2 GROUP Signal
+
+해당 Batch Group의 전체 완료 결과를 기록한다.
+
+```text
+SIGNAL_TYPE_CD = 'GROUP'
+```
+
+정상 완료 예시:
+
+```text
+SALES_DAILY / GROUP / SUCCESS
+```
+
+실패 완료 예시:
+
+```text
+SALES_DAILY / GROUP / FAIL
+```
+
+ADF는 `GROUP + SUCCESS` Signal만 후속 Pipeline 실행 대상으로 사용한다.
+
+---
+
+## 5. 논리 모델
+
+| 속성명 | 설명 | 필수 여부 |
+|---|---|---|
+| 시그널 ID | Source DB 내부 Signal 식별자 | 필수 |
+| 시그널 유형 | `JOB`, `GROUP` | 필수 |
+| 배치 그룹 코드 | 업무 Batch Group 식별자 | 필수 |
+| 배치 작업명 | 개별 TWS/ETL Job명 | JOB인 경우 필수 |
+| 배치 실행 ID | 동일 업무일자 실행 회차 구분 | 권장 |
+| 배치 기준일자 | 업무 기준일 | 필수 |
+| 배치 완료일시 | Job 또는 Group 완료 시각 | 필수 |
+| 시그널 생성일시 | Signal INSERT 시각 | 필수 |
+| 처리 상태 | `SUCCESS`, `FAIL` | 필수 |
+| Parameter JSON | ADF 전달용 가변 Parameter | 선택 |
+
+---
+
+## 6. 물리 모델
+
+DB2 LUW 기준으로 다음과 같이 구성한다.
+
+```sql
+CREATE TABLE TB_ETL_BATCH_SIGNAL
+(
+    SIGNAL_ID           BIGINT
+                        GENERATED ALWAYS AS IDENTITY
+                        (START WITH 1, INCREMENT BY 1, NO CACHE),
+
+    SIGNAL_TYPE_CD      VARCHAR(10)     NOT NULL,
+
+    BATCH_GROUP_CD      VARCHAR(50)     NOT NULL,
+
+    BATCH_JOB_NM        VARCHAR(100),
+
+    BATCH_RUN_ID        VARCHAR(100),
+
+    BATCH_DATE          DATE            NOT NULL,
+
+    BATCH_END_DTTM      TIMESTAMP       NOT NULL,
+
+    SIGNAL_CREATE_DTTM  TIMESTAMP       NOT NULL
+                        DEFAULT CURRENT TIMESTAMP,
+
+    STATUS_CD           VARCHAR(10)     NOT NULL,
+
+    PARAM_JSON          CLOB(65536),
+
+    CONSTRAINT PK_TB_ETL_BATCH_SIGNAL
+        PRIMARY KEY (SIGNAL_ID),
+
+    CONSTRAINT CK_TB_ETL_BATCH_SIGNAL_TYPE
+        CHECK (SIGNAL_TYPE_CD IN ('JOB', 'GROUP')),
+
+    CONSTRAINT CK_TB_ETL_BATCH_SIGNAL_STATUS
+        CHECK (STATUS_CD IN ('SUCCESS', 'FAIL'))
+);
+```
+
+---
+
+## 7. 컬럼 정의
+
+| 컬럼명 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `SIGNAL_ID` | BIGINT IDENTITY | PK | Source DB 내부 Signal ID |
+| `SIGNAL_TYPE_CD` | VARCHAR(10) | NOT NULL, CHECK | `JOB`, `GROUP` |
+| `BATCH_GROUP_CD` | VARCHAR(50) | NOT NULL | Batch Group 식별자 |
+| `BATCH_JOB_NM` | VARCHAR(100) | NULL 허용 | 개별 Job명. GROUP은 NULL |
+| `BATCH_RUN_ID` | VARCHAR(100) | NULL 허용 | 동일 기준일 재실행 구분 |
+| `BATCH_DATE` | DATE | NOT NULL | 업무 기준일 |
+| `BATCH_END_DTTM` | TIMESTAMP | NOT NULL | Job 또는 Group 완료 시각 |
+| `SIGNAL_CREATE_DTTM` | TIMESTAMP | NOT NULL | Signal 등록 시각 |
+| `STATUS_CD` | VARCHAR(10) | NOT NULL, CHECK | `SUCCESS`, `FAIL` |
+| `PARAM_JSON` | CLOB(65536) | NULL 허용 | 업무별 가변 Parameter |
+
+---
+
+## 8. JOB Signal 처리
+
+개별 Job 종료 시 신규 Signal을 INSERT한다.
+
+```sql
+INSERT INTO TB_ETL_BATCH_SIGNAL
+(
+    SIGNAL_TYPE_CD,
+    BATCH_GROUP_CD,
+    BATCH_JOB_NM,
+    BATCH_RUN_ID,
+    BATCH_DATE,
+    BATCH_END_DTTM,
+    STATUS_CD,
+    PARAM_JSON
+)
+VALUES
+(
+    'JOB',
+    'SALES_DAILY',
+    'JOB_01',
+    '20260911_01',
+    DATE('2026-09-11'),
+    CURRENT TIMESTAMP,
+    'SUCCESS',
+    '{
+        "targetTable":"CUSTOMER_MASTER",
+        "rowCount":15234
+    }'
+);
+```
+
+실패 시:
+
+```text
+SIGNAL_TYPE_CD = 'JOB'
+STATUS_CD      = 'FAIL'
+```
+
+동일 Job이 재실행되는 경우 기존 Row를 수정하지 않고 신규 Signal을 INSERT한다.
+
+예시:
+
+```text
+SIGNAL_ID = 101 / JOB_01 / FAIL
+SIGNAL_ID = 108 / JOB_01 / SUCCESS
+```
+
+---
+
+## 9. GROUP Signal 처리
+
+Batch Group의 모든 필수 Job이 정상 완료된 경우 `GROUP + SUCCESS` Signal을 INSERT한다.
+
+```sql
+INSERT INTO TB_ETL_BATCH_SIGNAL
+(
+    SIGNAL_TYPE_CD,
+    BATCH_GROUP_CD,
+    BATCH_RUN_ID,
+    BATCH_DATE,
+    BATCH_END_DTTM,
+    STATUS_CD,
+    PARAM_JSON
+)
+VALUES
+(
+    'GROUP',
+    'SALES_DAILY',
+    '20260911_01',
+    DATE('2026-09-11'),
+    CURRENT TIMESTAMP,
+    'SUCCESS',
+    '{
+        "schemaVersion":"1.0",
+        "businessDate":"2026-09-11",
+        "interfaceId":"IF_SALES_DAILY",
+        "companyCode":"1000"
+    }'
+);
+```
+
+ADF는 해당 Signal을 후속 Pipeline 실행 기준으로 사용한다.
+
+---
+
+## 10. Batch Group 완료 판단
+
+하나의 Batch Group은 여러 TWS/ETL Job으로 구성될 수 있다.
+
+예시:
+
+```text
+SALES_DAILY
+
+JOB_01
+JOB_02
+JOB_03
+...
+JOB_20
+```
+
+Job 실행 또는 완료 순서와 관계없이 전체 필수 Job이 정상 완료되었는지를 확인한다.
+
+```text
+JOB_03 SUCCESS
+JOB_11 SUCCESS
+JOB_01 SUCCESS
+...
+JOB_20 SUCCESS
+       |
+       v
+전체 필수 Job SUCCESS 확인
+       |
+       v
+GROUP SUCCESS INSERT
+```
+
+GROUP 완료 판단의 논리적인 실행 단위는 다음과 같다.
+
+```text
+BATCH_GROUP_CD
++ BATCH_DATE
++ BATCH_RUN_ID
+```
+
+---
+
+## 11. TWS Final Job 방식
+
+TWS에서 여러 Job의 후행 작업으로 Final Job 구성이 가능한 경우 Final Job에서 `GROUP SUCCESS` Signal을 생성한다.
+
+```text
+JOB_01 --+
+JOB_02 --+
+JOB_03 --+--> FINAL_SIGNAL_JOB --> GROUP SUCCESS INSERT
+...      |
+JOB_20 --+
+```
+
+`FINAL_SIGNAL_JOB`에서는 Batch Group 완료 Signal 등록만 수행한다.
+
+---
+
+## 12. TWS Workflow가 분리된 경우
+
+각 Job이 서로 다른 TWS Workflow에 존재하는 경우 개별 Job 완료 시 `JOB` Signal을 등록하고, 그룹 완료 확인 로직에서 동일 Batch 실행에 대한 Job 상태를 확인한다.
+
+```text
+JOB 완료
+   |
+   v
+JOB Signal INSERT
+   |
+   v
+그룹 완료 여부 확인
+   |
+   +-- 미완료 --> 종료
+   |
+   +-- 전체 SUCCESS
+           |
+           v
+      GROUP SUCCESS INSERT
+```
+
+완료 여부 확인 시 다음 값을 기준으로 동일 Batch 실행을 식별한다.
+
+```text
+BATCH_GROUP_CD
+BATCH_DATE
+BATCH_RUN_ID
+```
+
+---
+
+## 13. GROUP FAIL
+
+Batch Group의 실패 상태를 별도로 관리하는 경우 `GROUP + FAIL` Signal을 등록할 수 있다.
+
+```text
+SIGNAL_TYPE_CD = 'GROUP'
+STATUS_CD      = 'FAIL'
+```
+
+ADF 처리 기준:
+
+| Signal 유형 | 상태 | ADF 처리 |
+|---|---|---|
+| GROUP | SUCCESS | 후속 Pipeline 실행 |
+| GROUP | FAIL | Pipeline 미실행 |
+| JOB | SUCCESS | 실행 대상 아님 |
+| JOB | FAIL | 실행 대상 아님 |
+
+`GROUP + FAIL` Signal 생성 여부는 운영 정책에 따라 선택 적용한다.
+
+---
+
+## 14. PARAM_JSON
+
+ADF Pipeline으로 전달할 가변 Parameter는 `PARAM_JSON`에 저장한다.
+
+예시:
+
+```json
+{
+  "schemaVersion": "1.0",
+  "businessDate": "2026-09-11",
+  "interfaceId": "IF_SALES_DAILY",
+  "companyCode": "1000",
+  "regionCode": "KR",
+  "reloadYn": "N"
+}
+```
+
+Parameter가 추가되는 경우에도 Signal Table의 컬럼 변경 없이 사용할 수 있다.
+
+```json
+{
+  "schemaVersion": "1.0",
+  "businessDate": "2026-09-11",
+  "interfaceId": "IF_SALES_DAILY",
+  "companyCode": "1000",
+  "regionCode": "KR",
+  "reloadYn": "N",
+  "partition": "20260911"
+}
+```
+
+### 14.1 Parameter 관리 원칙
+
+검색, Grouping 및 상태 판단에 사용하는 값은 일반 컬럼으로 유지한다.
+
+```text
+BATCH_GROUP_CD
+BATCH_JOB_NM
+BATCH_RUN_ID
+BATCH_DATE
+STATUS_CD
+```
+
+업무별로 달라질 수 있는 전달값은 `PARAM_JSON`으로 관리한다.
+
+### 14.2 ADF Parameter 전달
+
+ADF는 `GROUP + SUCCESS` Signal의 `PARAM_JSON`을 조회한 후 후속 Pipeline에 전달한다.
+
+```text
+TB_ETL_BATCH_SIGNAL
+        |
+        | PARAM_JSON
+        v
+ADF Parent Pipeline
+        |
+        v
+JSON Parsing
+        |
+        v
+ADF Child / ETL Pipeline
+```
+
+---
+
+## 15. BATCH_RUN_ID
+
+동일 업무 기준일자의 재실행을 구분하기 위해 `BATCH_RUN_ID`를 사용한다.
+
+정상 실행:
+
+```text
+BATCH_DATE   = 2026-09-11
+BATCH_RUN_ID = 20260911_01
+```
+
+재실행:
+
+```text
+BATCH_DATE   = 2026-09-11
+BATCH_RUN_ID = 20260911_02
+```
+
+논리적인 Batch 실행 단위:
+
+```text
+BATCH_GROUP_CD
++ BATCH_DATE
++ BATCH_RUN_ID
+```
+
+동일 Batch Group 내의 Job은 가능한 한 동일한 `BATCH_RUN_ID`를 사용한다.
+
+---
+
+## 16. GROUP Signal 중복 방지
+
+동일 Batch 실행에 대한 `GROUP + SUCCESS` Signal은 1건만 생성하는 것을 원칙으로 한다.
+
+논리적 식별 기준:
+
+```text
+BATCH_GROUP_CD
++ BATCH_DATE
++ BATCH_RUN_ID
++ SIGNAL_TYPE_CD
+```
+
+예시:
+
+```text
+BATCH_GROUP_CD = SALES_DAILY
+BATCH_DATE     = 2026-09-11
+BATCH_RUN_ID   = 20260911_01
+SIGNAL_TYPE_CD = GROUP
+```
+
+동일 Batch Run의 `GROUP SUCCESS`가 이미 존재하는 경우 추가 생성하지 않는다.
+
+---
+
+## 17. Source DB별 Signal Table
+
+각 Source DB에 동일한 구조의 `TB_ETL_BATCH_SIGNAL`을 생성한다.
+
+```text
+ERP DB
+└─ TB_ETL_BATCH_SIGNAL
+
+CRM DB
+└─ TB_ETL_BATCH_SIGNAL
+
+SCM DB
+└─ TB_ETL_BATCH_SIGNAL
+```
+
+각 Source DB의 `SIGNAL_ID`는 독립적으로 생성된다.
+
+예시:
+
+```text
+ERP / SIGNAL_ID = 1001
+CRM / SIGNAL_ID = 1001
+SCM / SIGNAL_ID = 1001
+```
+
+따라서 ADF에서는 Signal을 다음 조합으로 식별한다.
+
+```text
+SOURCE_SYSTEM_CD
++
+SIGNAL_ID
+```
+
+예시:
+
+```text
+ERP_1001
+CRM_1001
+SCM_1001
+```
+
+---
+
+## 18. 여러 Source DB에 걸친 Batch Group
+
+하나의 Batch Group에 여러 Source System의 Job이 포함될 경우 `GROUP` Signal을 발행할 대표 Source를 지정한다.
+
+예시:
+
+```text
+SALES_DAILY
+
+ERP JOB  : 5개
+CRM JOB  : 5개
+SCM JOB  : 10개
+```
+
+대표 Source:
+
+```text
+GROUP OWNER = ERP
+```
+
+처리 구조:
+
+```text
+ERP JOB --+
+CRM JOB --+--> 전체 필수 Job 완료 판단
+SCM JOB --+
+               |
+               v
+         ERP DB에
+     GROUP SUCCESS INSERT
+               |
+               v
+              ADF
+```
+
+동일 Batch Group에 대한 `GROUP` Signal은 대표 Source에서만 생성한다.
+
+---
+
+## 19. ADF 조회 기준
+
+ADF는 `GROUP + SUCCESS` Signal만 후속 처리 대상으로 조회한다.
+
+```sql
+SELECT
+    SIGNAL_ID,
+    BATCH_GROUP_CD,
+    BATCH_RUN_ID,
+    BATCH_DATE,
+    BATCH_END_DTTM,
+    SIGNAL_CREATE_DTTM,
+    PARAM_JSON
+FROM TB_ETL_BATCH_SIGNAL
+WHERE SIGNAL_TYPE_CD = 'GROUP'
+  AND STATUS_CD = 'SUCCESS'
+  AND SIGNAL_CREATE_DTTM >= ?
+ORDER BY SIGNAL_CREATE_DTTM, SIGNAL_ID;
+```
+
+ADF는 Source DB의 Signal 데이터를 UPDATE 또는 DELETE하지 않는다.
+
+---
+
+## 20. ADF 처리 흐름
+
+```text
+1. Source DB별 Safety Window Polling
+        |
+        v
+2. GROUP + SUCCESS Signal 조회
+        |
+        v
+3. SOURCE_SYSTEM_CD + SIGNAL_ID 중복 체크
+        |
+        +-- 이미 처리됨 --> Skip
+        |
+        +-- 신규 Signal
+                |
+                v
+4. ADF Meta DB에 RUNNING 기록
+                |
+                v
+5. PARAM_JSON Parsing
+                |
+                v
+6. 후속 ADF Pipeline 실행
+                |
+                v
+7. Meta DB 처리 결과 기록
+   SUCCESS / FAIL
+```
+
+ADF는 개별 `JOB` Signal을 이용하여 Batch Group 완료 여부를 판단하지 않는다.
+
+---
+
+## 21. Polling 및 Safety Window
+
+ADF는 `SIGNAL_CREATE_DTTM`을 기준으로 일정 Safety Window를 적용하여 Signal을 조회한다.
+
+예시:
+
+```text
+마지막 정상 수집 시각 : 14:00
+Safety Window        : 5분
+
+다음 조회 시작 시각 : 13:55
+```
+
+조회 예시:
+
+```sql
+SELECT
+    SIGNAL_ID,
+    BATCH_GROUP_CD,
+    BATCH_RUN_ID,
+    BATCH_DATE,
+    BATCH_END_DTTM,
+    SIGNAL_CREATE_DTTM,
+    PARAM_JSON
+FROM TB_ETL_BATCH_SIGNAL
+WHERE SIGNAL_TYPE_CD = 'GROUP'
+  AND STATUS_CD = 'SUCCESS'
+  AND SIGNAL_CREATE_DTTM >= ?
+ORDER BY SIGNAL_CREATE_DTTM, SIGNAL_ID;
+```
+
+Safety Window 적용으로 동일 Signal이 반복 조회될 수 있으므로 ADF Meta DB에서 중복 여부를 확인한다.
+
+중복 식별 기준:
+
+```text
+SOURCE_SYSTEM_CD + SIGNAL_ID
+```
+
+Source Batch에서는 Signal INSERT 후 즉시 COMMIT하는 것을 원칙으로 한다.
+
+---
+
+## 22. ADF Meta DB 관리
+
+ADF Meta DB에서는 최소한 다음 정보를 관리한다.
+
+| 항목 | 설명 |
+|---|---|
+| `SOURCE_SYSTEM_CD` | Source System 식별 |
+| `SIGNAL_ID` | Source Signal ID |
+| `BATCH_GROUP_CD` | Batch Group |
+| `BATCH_RUN_ID` | Batch 실행 ID |
+| `PROCESS_STATUS` | `RUNNING`, `SUCCESS`, `FAIL` |
+| `ADF_RUN_ID` | ADF Pipeline Run ID |
+| `START_DTTM` | 처리 시작일시 |
+| `END_DTTM` | 처리 종료일시 |
+| `ERROR_MESSAGE` | 오류 발생 시 오류 내용 |
+
+### 22.1 Signal 중복 식별
+
+다음 조합을 Unique 식별 기준으로 사용한다.
+
+```text
+SOURCE_SYSTEM_CD
++
+SIGNAL_ID
+```
+
+### 22.2 처리 상태 예시
+
+```text
+신규 Signal 수집
+      |
+      v
+RUNNING
+      |
+      +-- Pipeline 정상 종료 --> SUCCESS
+      |
+      +-- Pipeline 오류 발생 --> FAIL
+```
+
+---
+
+## 23. 인덱스
+
+ADF의 주요 조회 조건은 다음과 같다.
+
+```text
+SIGNAL_TYPE_CD = 'GROUP'
+STATUS_CD      = 'SUCCESS'
+SIGNAL_CREATE_DTTM >= 조회 기준 시각
+```
+
+데이터 증가량과 DB2 실행계획을 확인하여 다음 Index 적용을 검토한다.
+
+```sql
+CREATE INDEX IX_ETL_BATCH_SIGNAL_01
+ON TB_ETL_BATCH_SIGNAL
+(
+    SIGNAL_TYPE_CD,
+    STATUS_CD,
+    SIGNAL_CREATE_DTTM,
+    SIGNAL_ID
+);
+```
+
+---
+
+## 24. 시간대
+
+다음 Timestamp 컬럼은 KST(UTC+9)를 기준으로 저장한다.
+
+```text
+BATCH_END_DTTM
+SIGNAL_CREATE_DTTM
+```
+
+DB2 `TIMESTAMP` 컬럼 자체에 Time Zone 정보를 저장하지 않고 저장 값의 기준을 KST로 통일한다.
+
+---
+
+## 25. 데이터 보관
+
+`TB_ETL_BATCH_SIGNAL`은 Append Only 방식으로 데이터가 누적된다.
+
+Source System별 운영 정책에 따라 보관기간을 정의한다.
+
+예시:
+
+```text
+최근 3개월 유지
+최근 6개월 유지
+최근 1년 유지
+```
+
+보관기간이 지난 데이터는 삭제 또는 Archive한다.
+
+ADF Meta DB의 실행 이력은 별도의 보관 정책을 적용할 수 있다.
+
+---
+
+## 26. 처리 대상 정의
+
+| 구분 | SIGNAL_TYPE_CD | STATUS_CD | ADF 후속 Pipeline |
+|---|---|---|---|
+| 개별 Job 성공 | JOB | SUCCESS | 실행하지 않음 |
+| 개별 Job 실패 | JOB | FAIL | 실행하지 않음 |
+| Group 성공 | GROUP | SUCCESS | 실행 |
+| Group 실패 | GROUP | FAIL | 실행하지 않음 |
+
+ADF의 후속 ETL Pipeline 실행 조건은 다음과 같다.
+
+```text
+SIGNAL_TYPE_CD = 'GROUP'
+AND
+STATUS_CD = 'SUCCESS'
+AND
+ADF Meta DB에 미처리 Signal
+```
+
+---
+
+## 27. 확정 항목
+
+1. DBMS는 DB2 LUW를 기준으로 한다.
+2. Source DB별로 `TB_ETL_BATCH_SIGNAL`을 생성한다.
+3. Signal 유형은 `JOB`, `GROUP`을 사용한다.
+4. 처리 상태는 `SUCCESS`, `FAIL`을 사용한다.
+5. 개별 Job 완료 결과는 `JOB` Signal로 기록한다.
+6. Batch Group 완료 결과는 `GROUP` Signal로 기록한다.
+7. Batch Group 완료 여부는 TWS/On-Prem ETL 영역에서 판단한다.
+8. ADF 실행 대상은 `GROUP + SUCCESS` Signal로 한다.
+9. 업무별 가변 Parameter는 `PARAM_JSON`으로 관리한다.
+10. 동일 업무일자 재실행은 `BATCH_RUN_ID`로 구분한다.
+11. Source DB의 Signal Table은 INSERT Only로 운영한다.
+12. ADF는 Source DB에 SELECT Only로 접근한다.
+13. Signal 중복 식별은 `SOURCE_SYSTEM_CD + SIGNAL_ID`를 사용한다.
+14. ADF Polling은 `SIGNAL_CREATE_DTTM` 기준 Safety Window 방식을 적용한다.
+15. ADF 처리 이력 및 Pipeline 실행 결과는 ADF Meta DB에서 관리한다.
+16. Timestamp는 KST(UTC+9) 기준으로 저장한다.
+17. 여러 Source System의 Job이 하나의 Batch Group을 구성하는 경우 하나의 `GROUP OWNER`를 지정한다.
+18. 동일 Batch Run에 대한 `GROUP SUCCESS` Signal은 1건만 생성한다.
+
+---
+
+## 28. 추가 확인 항목
+
+- [ ] `BATCH_GROUP_CD` 명명 규칙 확정
+- [ ] `BATCH_RUN_ID` 생성 규칙 확정
+- [ ] 동일 Group 내 공통 `BATCH_RUN_ID` 전달 방식 확정
+- [ ] Group 완료 판단 구현 방식 확정
+- [ ] TWS Final Job 적용 가능 여부 확인
+- [ ] 여러 Source DB에 걸친 Group의 `GROUP OWNER` 확정
+- [ ] `GROUP FAIL` Signal 생성 여부 확정
+- [ ] GROUP Signal 중복 생성 방지 방식 확정
+- [ ] ADF Polling 주기 확정
+- [ ] Safety Window 시간 확정
+- [ ] ADF Meta DB 처리 이력 보관기간 확정
+- [ ] Source Signal 데이터 보관기간 확정
+- [ ] `PARAM_JSON` 공통 Parameter 정의
+- [ ] `PARAM_JSON.schemaVersion` 사용 여부 확정
+````
