@@ -222,7 +222,21 @@ ORDER BY MDS.DAT_STRC_NM, MA.ENTITY_NAME, MA.ATTRIBUTE_NAME
 
 
 ```sql
---DB2 테이블 정보 
+--DB2 테이블 정보
+
+-- META.TB_MLCRP_CATALOG_TABLE , META.TB_MLIWP_CATALOG_TABLE, META.TB_MLSQP_CATALOG_TABLE, META.TB_MLCYP_CATALOG_TABLE,
+-- META.TB_MLHSP_CATALOG_TABLE, META.TB_MLVOCP_CATALOG_TABLE, META.TB_MLRBAP_CATALOG_TABLE
+
+/* 대상 DB명 :
+'MLCRP'
+'MLIWP'
+'MLSQP'
+'MLCYP'
+'MLHSP'
+'MLRBAP'
+'MLVOCP'
+*/
+
 select  current server AS SRCE_CTLG_NM, 
  a.tabschema AS SRCE_SCHEMA_NM, 
  a.tabname AS SRCE_TBL_NM, 
@@ -248,7 +262,21 @@ where a.tabschema not like 'SYS%'
 ```
 
 ```sql
---컬럼 정보
+--Db2 컬럼 정보
+-- META.TB_MLCRP_CATALOG_COLUMN , META.TB_MLIWP_CATALOG_COLUMN, META.TB_MLSQP_CATALOG_COLUMN, META.TB_MLCYP_CATALOG_COLUMN, 
+-- META.TB_MLHSP_CATALOG_COLUMN, META.TB_MLVOCP_CATALOG_COLUMN, META.TB_MLRBAP_CATALOG_COLUMN
+
+
+/* 대상 DB명 :
+'MLCRP'
+'MLIWP'
+'MLSQP'
+'MLCYP'
+'MLHSP'
+'MLRBAP'
+'MLVOCP'
+*/
+
 
 select 
     current server AS SRCE_CTLG_NM, 
@@ -276,7 +304,8 @@ with ur;
 
 
 ```sql
---PG 테이블정보 
+--PG 테이블정보
+--대상 DB : 'MLMSAP'
 SELECT  
     current_database() AS SRCE_CTLG_NM, 
     n.nspname AS SRCE_SCHEMA_NM, 
@@ -301,7 +330,9 @@ WHERE c.relkind IN ('r', 'p') AND n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'i
 ```
 
 ```sql
---PG 컬럼 정보 
+--PG 컬럼 정보
+--대상 DB : 'MLMSAP'
+
 SELECT
     current_database() AS SRCE_CTLG_NM, 
     c.table_schema AS SRCE_SCHEMA_NM, 
@@ -331,7 +362,15 @@ WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema') AND c.table_sch
 
 ```sql
 
---MS 테이블 정보  
+--MS 테이블 정보
+-- META.TB_MLMCCP_CATALOG_TABLE, META.TB_MLMCSP_CATALOG_TABLE, META.TB_MLADBP_CATALOG_TABLE
+
+/* 대상 DB명 :
+'MLMCCP'
+'MLMCSP'
+'MLADBP'
+*/
+
 SELECT  
     DB_NAME() AS SRCE_CTLG_NM,  
     s.name AS SRCE_SCHEMA_NM,
@@ -396,7 +435,15 @@ WHERE s.name NOT LIKE 'SYS%';
 ```
 
 ```sql
---MS 컬럼 정보 
+--MS 컬럼 정보
+-- META.TB_MLMCCP_CATALOG_COLUMN, META.TB_MLMCSP_CATALOG_COLUMN, META.TB_MLADBP_CATALOG_COLUMN
+
+
+/* 대상 DB명 :
+'MLMCCP'
+'MLMCSP'
+'MLADBP'
+*/
 
 SELECT  DB_NAME() AS SRCE_CTLG_NM, 
     s.name  AS SRCE_SCHEMA_NM,
